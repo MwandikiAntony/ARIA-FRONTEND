@@ -2,7 +2,6 @@
 
 import React, { createContext, useContext, ReactNode } from 'react';
 import { useWebSocket } from '@/hooks/useWebSocket';
-import { useAuth } from './AuthContext';
 
 interface WebSocketContextType {
   isConnected: boolean;
@@ -18,7 +17,6 @@ const WebSocketContext = createContext<WebSocketContextType | undefined>(undefin
 export const useWebSocketContext = (): WebSocketContextType => {
   const context = useContext(WebSocketContext);
   if (!context) {
-    // Return fallback instead of throwing error
     return {
       isConnected: false,
       lastMessage: null,
@@ -32,13 +30,9 @@ export const useWebSocketContext = (): WebSocketContextType => {
 };
 
 export const WebSocketProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const { user } = useAuth();
-  const sessionId = user?.uid || 'anonymous';
-
-  // Only enable WebSocket if we have a session ID and are in browser environment
-  const enabled = typeof window !== 'undefined' && 
-                !window.location.hostname.includes('vercel.app') && 
-                !!sessionId;
+  // Use a fixed session ID instead of depending on auth
+  const sessionId = 'anonymous-session';
+  const enabled = typeof window !== 'undefined';
 
   const { isConnected, lastMessage, latency, sendMessage, sendAudioChunk, error } = useWebSocket({
     enabled,
