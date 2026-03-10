@@ -78,6 +78,11 @@ export function useAriaIntro(): UseAriaIntroReturn {
         // Will transition to 'speaking' when first audio chunk arrives.
       }, INTRO_DELAY_MS);
     }
+    // If WS or Gemini hits error state, stop intro and surface it
+    if (geminiState === 'error' && introState === 'waiting') {
+      setIntroState('stopped');
+    }
+
     return () => {
       if (delayRef.current) clearTimeout(delayRef.current);
     };

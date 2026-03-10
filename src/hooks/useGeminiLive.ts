@@ -181,6 +181,7 @@ export function useGeminiLive({
         }
         if (msg.type === 'error') {
           setError(msg.error);
+          setState('error');  // ← makes useAriaIntro detect the failure
         }
       } catch {
         // not JSON — ignore
