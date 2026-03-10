@@ -222,7 +222,7 @@ export function useGeminiLive({
     recognition.lang = 'en-US';
     recognitionRef.current = recognition;
 
-    recognition.onresult = (event) => {
+    recognition.onresult = (event: SpeechRecognitionEvent) => {
       const last = event.results[event.results.length - 1];
       const text = last[0].transcript;
       setTranscript(text);
