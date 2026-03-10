@@ -216,7 +216,7 @@ export function useGeminiLive({
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) return;
 
-    const recognition: SpeechRecognition = new SpeechRecognition();
+    const recognition = new SpeechRecognition();
     recognition.continuous = true;
     recognition.interimResults = true;
     recognition.lang = 'en-US';
