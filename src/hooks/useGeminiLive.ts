@@ -1,3 +1,6 @@
+declare const SpeechRecognition: typeof window.SpeechRecognition;
+declare const webkitSpeechRecognition: typeof window.SpeechRecognition;
+
 import { useEffect, useRef, useCallback, useState } from 'react';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
