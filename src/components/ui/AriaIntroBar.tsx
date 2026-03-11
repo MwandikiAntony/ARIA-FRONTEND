@@ -25,7 +25,7 @@
  *    WHY: Previously ✕ only stopped intro. Now it cleanly stops the session.
  */
 
-import React, { useEffect } from 'react';
+import React from 'react';
 import { useAriaIntro, IntroState } from '@/hooks/useAriaIntro';
 
 // ── Waveform (shown when ARIA is speaking) ────────────────────────────────────
@@ -92,16 +92,9 @@ export const AriaIntroBar: React.FC = () => {
     disableVoice,
   } = useAriaIntro();
 
-  // Auto-enable voice when intro starts speaking
-  // Auto-disable when fully stopped
-  useEffect(() => {
-    if (introState === 'speaking') {
-      enableVoice();
-    }
-    if (introState === 'stopped' || introState === 'interrupted') {
-      disableVoice();
-    }
-  }, [introState, enableVoice, disableVoice]);
+  // REMOVED: useEffect that called enableVoice() on introState changes.
+  // useAriaIntro starts mic internally on WS ready — component must never
+  // trigger mic start. Double-calling startListening() broke micActiveRef.
 
   // ── Visibility logic ──────────────────────────────────────────────────────
   //

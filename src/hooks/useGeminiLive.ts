@@ -229,18 +229,20 @@ export function useGeminiLive({
   const micStreamRef = useRef<MediaStream | null>(null);
   const micActiveRef = useRef(false);
 
-  // ── Echo suppression: mute mic when ARIA is speaking ──────────────────────
+  // ── Echo suppression REMOVED ───────────────────────────────────────────────
   //
-  // WHY: Layer 2 echo prevention. Layer 1 is browser AEC (getUserMedia).
-  // Even with AEC, some systems (especially laptop speakers without good
-  // physical isolation) leak ARIA's output back into the mic. Silencing the
-  // worklet output completely when isSpeaking eliminates this residual echo.
-  useEffect(() => {
-    workletNodeRef.current?.port.postMessage({
-      type: 'suppress',
-      value: isSpeaking,
-    });
-  }, [isSpeaking]);
+  // WHY REMOVED: Suppressing the mic worklet while isSpeaking=true silenced
+  // the user's voice for 800ms after every ARIA response. This completely
+  // broke barge-in — any question asked within 800ms of ARIA finishing was
+  // dropped silently and never reached Gemini.
+  //
+  // Browser AEC (echoCancellation:true in getUserMedia) is sufficient for
+  // echo cancellation. Gemini's server-side VAD further filters non-speech.
+  // We do NOT need to suppress the mic at the application level.
+  //
+  // If echo is observed on specific hardware (laptop speakers without headphones),
+  // advise the user to use headphones — that is a hardware isolation issue,
+  // not something we should fix by silencing the user's own voice.
 
   // ── Mic streaming ──────────────────────────────────────────────────────────
 
@@ -372,7 +374,7 @@ export function useGeminiLive({
             setIsSpeaking(false);
             // Only go back to ready/listening based on mic state
             setState(micActiveRef.current ? 'listening' : 'ready');
-          }, 800); // 800ms silence after last chunk = ARIA done speaking
+          }, 400); // 400ms — was 800ms which delayed isSpeaking=false too long
         }
         return;
       }

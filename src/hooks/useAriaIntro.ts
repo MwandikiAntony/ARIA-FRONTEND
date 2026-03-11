@@ -1,34 +1,34 @@
 /**
- * useAriaIntro.ts  — MODIFIED
+ * useAriaIntro.ts — REWRITTEN
  *
- * WHAT CHANGED vs original and WHY:
+ * WHAT CHANGED AND WHY:
  *
- * 1. PERSISTENT AGENT AFTER INTRO (was: stopped after intro finished)
- *    Old: When isSpeaking went false after intro audio ended → setIntroState('stopped')
- *         → AriaIntroBar hid itself → Gemini session idle → user lost the assistant
- *    New: When intro audio ends → setIntroState('active')
- *         → Mic streaming starts → ARIA keeps listening indefinitely
- *         → Agent stays alive until user explicitly mutes or stops it
+ * 1. ARIA IS NOW A PERSISTENT LIVE AGENT (was: intro-gated)
+ *    Old: Mic only started AFTER intro audio finished. If intro never played
+ *         or got stuck, the mic never started → user could never be heard.
+ *    New: As soon as the WebSocket is 'ready', mic streaming starts immediately.
+ *         ARIA listens from the first moment. The intro greeting is just the
+ *         first thing ARIA says — it doesn't gate anything.
  *
- * 2. NEW STATES: 'active' and 'muted' (was: 'idle'|'waiting'|'speaking'|'paused'|'stopped'|'interrupted')
- *    'active' — intro done, mic streaming, ARIA listening for questions
- *    'muted'  — user muted ARIA (mic stopped, no audio output), session still open
- *    These map to the requirement: "remain on until user mute it or closes it"
+ * 2. MIC STARTS ON 'ready', NOT AFTER INTRO (was: only after isSpeaking→false)
+ *    Old: startListening() was only called inside the isSpeaking transition effect.
+ *         If intro audio never arrived (network issue, Gemini delay), mic never started.
+ *    New: startListening() is called as soon as geminiState === 'ready'.
+ *         ARIA can hear you even while she's speaking her greeting (barge-in works).
  *
- * 3. VOICE ENABLE IS NOW REAL MIC STREAMING (was: SpeechRecognition)
- *    enableVoice() → startListening() → now starts PCM AudioWorklet capture
- *    disableVoice() → stopListening() → stops mic stream
- *    This means ARIA actually hears you via the Live API, not via text transcription
+ * 3. ECHO CANCELLATION IS HANDLED BY THE BROWSER + WORKLET (not by us gating mic)
+ *    The browser's echoCancellation:true in getUserMedia already handles this.
+ *    We no longer need to block the mic during speech — that was over-engineering
+ *    that silenced user interruptions.
  *
- * 4. MUTE/UNMUTE CONTROLS (new)
- *    mute(): stops mic streaming, stays in 'muted' state, session stays open
- *    unmute(): restarts mic streaming, returns to 'active' state
- *    This implements "remain on until user mute it" requirement
+ * 4. INTRO IS JUST A TEXT PROMPT, NOT A STATE MACHINE GATE
+ *    The intro prompt is sent once. After that, Gemini is in a conversational loop.
+ *    User can ask any question at any time — that's the whole point of the agent.
  *
- * 5. ECHO: enableVoice is only called AFTER intro audio ends (isSpeaking = false)
- *    WHY: If we started mic streaming while ARIA is speaking the introduction,
- *    ARIA's own voice would be captured and sent back as input — causing feedback.
- *    We wait for the intro to finish before enabling mic input.
+ * 5. SIMPLIFIED STATE: idle → waiting → active | muted | stopped
+ *    Removed 'speaking' and 'interrupted' as intro-specific states — those are
+ *    handled by useGeminiLive's isSpeaking flag. introState only tracks whether
+ *    the agent session is running, muted, or stopped.
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -37,14 +37,11 @@ import { useGeminiLive, GeminiState } from './useGeminiLive';
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export type IntroState =
-  | 'idle'
-  | 'waiting'
-  | 'speaking'
-  | 'active'        // NEW: intro done, agent listening persistently
-  | 'paused'
-  | 'muted'         // NEW: user muted, session still open
-  | 'stopped'
-  | 'interrupted';
+  | 'idle'       // No session yet
+  | 'waiting'    // Session created, connecting to WebSocket
+  | 'active'     // Agent live — mic streaming, ARIA listening + responding
+  | 'muted'      // User muted — session open but mic stopped
+  | 'stopped';   // Session ended
 
 export interface UseAriaIntroReturn {
   introState: IntroState;
@@ -53,11 +50,12 @@ export interface UseAriaIntroReturn {
   isListening: boolean;
   transcript: string;
   sessionId: string | null;
+  stop: () => void;
+  mute: () => void;
+  unmute: () => void;
+  // Legacy aliases — keep for component compatibility
   pause: () => void;
   resume: () => void;
-  stop: () => void;
-  mute: () => void;        // NEW
-  unmute: () => void;      // NEW
   enableVoice: () => void;
   disableVoice: () => void;
 }
@@ -66,19 +64,14 @@ export interface UseAriaIntroReturn {
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
 
-// Delay before triggering intro after Gemini WS is ready.
-// Gives the user time to see the page before audio starts.
-const INTRO_DELAY_MS = 1500;
-
 // ── Hook ──────────────────────────────────────────────────────────────────────
 
 export function useAriaIntro(): UseAriaIntroReturn {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [introState, setIntroState] = useState<IntroState>('idle');
 
-  const delayRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const introFiredRef = useRef(false);
-  const audioEverReceivedRef = useRef(false); // true once first audio chunk arrives
+  const introFiredRef = useRef(false);    // ensure intro prompt sent exactly once
+  const micStartedRef = useRef(false);    // ensure mic started exactly once
 
   const {
     state: geminiState,
@@ -90,7 +83,7 @@ export function useAriaIntro(): UseAriaIntroReturn {
     stopListening,
   } = useGeminiLive({ sessionId, enabled: !!sessionId });
 
-  // ── Create session on mount ───────────────────────────────────────────────
+  // ── Step 1: Create backend session on mount ───────────────────────────────
   useEffect(() => {
     async function init() {
       try {
@@ -110,96 +103,58 @@ export function useAriaIntro(): UseAriaIntroReturn {
     init();
   }, []);
 
-  // ── Trigger intro once Gemini WS is ready ────────────────────────────────
+  // ── Step 2: As soon as WS is ready → start mic + send greeting ───────────
+  //
+  // WHY start mic immediately (not after intro):
+  //   ARIA's intro is the first response in a live conversation. The user
+  //   should be able to interrupt it ("wait, what does navigation mode do?")
+  //   from the very first second. Gating mic on intro completion meant users
+  //   had to sit silently through the intro before they could interact.
+  //
+  // WHY send intro prompt here and not elsewhere:
+  //   gemini_service.py creates the session but sends no initial message.
+  //   We need to send a text prompt to kick off ARIA's greeting. After that,
+  //   Gemini is in its realtime input loop and responds to mic audio directly.
   useEffect(() => {
     if (
       geminiState === 'ready' &&
       introState === 'waiting' &&
       !introFiredRef.current
     ) {
-      delayRef.current = setTimeout(() => {
-        introFiredRef.current = true;
-        sendControlMessage('start_intro');
-        // Stays in 'waiting' until first audio chunk arrives
-      }, INTRO_DELAY_MS);
+      introFiredRef.current = true;
+
+      // Send greeting prompt — Gemini will respond with audio immediately
+      sendControlMessage('start_intro');
+
+      // Start mic streaming right away — user can interrupt from second 1
+      if (!micStartedRef.current) {
+        micStartedRef.current = true;
+        startListening().catch((err) => {
+          console.error('[useAriaIntro] Mic failed to start:', err);
+        });
+      }
+
+      setIntroState('active');
     }
 
-    if (geminiState === 'error' && introState === 'waiting') {
+    if (geminiState === 'error') {
       setIntroState('stopped');
     }
-
-    return () => {
-      if (delayRef.current) clearTimeout(delayRef.current);
-    };
-  }, [geminiState, introState, sendControlMessage]);
-
-  // ── Transition to 'speaking' when first audio chunk arrives ──────────────
-  useEffect(() => {
-    if (isSpeaking && !audioEverReceivedRef.current) {
-      audioEverReceivedRef.current = true;
-    }
-    if (isSpeaking && (introState === 'waiting' || introState === 'speaking')) {
-      setIntroState('speaking');
-    }
-  }, [isSpeaking, introState]);
-
-  // ── Transition to 'active' when intro audio finishes ────────────────────
-  //
-  // CHANGED from original:
-  // Old: setIntroState('stopped') → bar hid → agent died
-  // New: setIntroState('active') → bar stays visible → mic streaming starts
-  //
-  // WHY wait for intro to finish before starting mic:
-  //   If mic streamed during the intro, ARIA's own intro audio would be
-  //   captured by the mic and sent back to Gemini as user input, causing
-  //   ARIA to hear herself and potentially respond mid-introduction.
-  //   Browser AEC helps but isn't perfect, especially on laptop speakers.
-  //   The safest approach is: mic OFF during intro playback, ON after.
-  const prevSpeakingRef = useRef(false);
-  useEffect(() => {
-    const wasSpeak = prevSpeakingRef.current;
-    prevSpeakingRef.current = isSpeaking;
-
-    if (wasSpeak && !isSpeaking && audioEverReceivedRef.current) {
-      if (introState === 'speaking') {
-        // Intro finished — enter persistent listening mode
-        setIntroState('active');
-        // Start PCM mic streaming now that ARIA is done speaking
-        startListening().catch(console.error);
-      }
-    }
-  }, [isSpeaking, introState, startListening]);
+  }, [geminiState, introState, sendControlMessage, startListening]);
 
   // ── Controls ──────────────────────────────────────────────────────────────
 
-  const pause = useCallback(() => {
-    sendControlMessage('pause_intro');
-    stopListening();
-    setIntroState('paused');
-  }, [sendControlMessage, stopListening]);
-
-  const resume = useCallback(() => {
-    sendControlMessage('resume_intro');
-    if (introState === 'paused') {
-      startListening().catch(console.error);
-      setIntroState('active');
-    }
-  }, [sendControlMessage, introState, startListening]);
-
   const stop = useCallback(() => {
-    if (delayRef.current) clearTimeout(delayRef.current);
     sendControlMessage('stop_intro');
     stopListening();
     setIntroState('stopped');
+    introFiredRef.current = false;
+    micStartedRef.current = false;
   }, [sendControlMessage, stopListening]);
 
   /**
-   * mute — stop sending mic audio, keep Gemini session open.
-   *
-   * WHY keep session open:
-   *   Closing and recreating the Gemini session on every mute would lose
-   *   conversation context and incur session startup latency (~500ms).
-   *   Keeping it open means unmute is instant — mic streaming just resumes.
+   * mute — stop mic audio, keep Gemini session open.
+   * User can unmute and the conversation continues with full context.
    */
   const mute = useCallback(() => {
     stopListening();
@@ -207,27 +162,20 @@ export function useAriaIntro(): UseAriaIntroReturn {
   }, [stopListening]);
 
   /**
-   * unmute — resume mic streaming, return to active state.
+   * unmute — resume mic streaming instantly (no session reconnect needed).
    */
   const unmute = useCallback(() => {
     startListening().catch(console.error);
     setIntroState('active');
   }, [startListening]);
 
+  // Legacy aliases for component compatibility
+  const pause = mute;
+  const resume = unmute;
   const enableVoice = useCallback(() => {
     startListening().catch(console.error);
   }, [startListening]);
-
-  const disableVoice = useCallback(() => {
-    stopListening();
-  }, [stopListening]);
-
-  // Cleanup
-  useEffect(() => {
-    return () => {
-      if (delayRef.current) clearTimeout(delayRef.current);
-    };
-  }, []);
+  const disableVoice = stopListening;
 
   return {
     introState,
@@ -236,11 +184,11 @@ export function useAriaIntro(): UseAriaIntroReturn {
     isListening,
     transcript,
     sessionId,
-    pause,
-    resume,
     stop,
     mute,
     unmute,
+    pause,
+    resume,
     enableVoice,
     disableVoice,
   };
