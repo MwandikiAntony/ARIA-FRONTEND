@@ -1,6 +1,6 @@
 'use client';
 
-import { DashboardGrid } from '@/components/navigation/NavigationHUD';
+import { NavigationHUD } from '@/components/navigation/NavigationHUD';
 import { useWebSocketContext } from '@/contexts/WebSocketContext';
 import { useEffect } from 'react';
 
