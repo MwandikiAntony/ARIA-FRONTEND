@@ -207,7 +207,7 @@ const WS_BASE =
   process.env.NEXT_PUBLIC_WS_URL ??
   'ws://localhost:8000';
 
-const RMS_THRESHOLD = 0.003;
+const RMS_THRESHOLD = 0.0; // Disabled — send all audio, let Gemini VAD decide
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
 
@@ -351,7 +351,7 @@ export function useGeminiLive({
     }
     const rms = Math.sqrt(sumSq / int16.length);
 
-    // Skip silence
+    // RMS gate disabled — Gemini VAD handles silence detection
     if (rms < RMS_THRESHOLD) return;
 
     audioOutCountRef.current++;
