@@ -1,34 +1,20 @@
 /**
- * useMediaCapture.ts
+ * useMediaCapture.ts — REWRITTEN (sendFrame callback replaces wsRef)
  *
- * Captures camera frames for ARIA navigation mode and sends them to the backend
- * as binary WebSocket frames.
+ * WHAT CHANGED AND WHY:
  *
- * Frame wire format:
- *   [10-byte "video" header (zero-padded)] [raw JPEG bytes]
+ * Previously accepted `wsRef: React.MutableRefObject<WebSocket | null>`.
+ * useNavigationSession passed `aria.wsRef ?? useRef(null)` — but if wsRef
+ * wasn't exported from useAriaIntro, the fallback was always null, so
+ * captureFrame() returned on `ws.readyState !== WebSocket.OPEN` every time.
+ * Result: 0 frames sent.
  *
- * This matches what router.py's handle_binary_message() expects:
- *   header = data[:10].decode().strip("\x00")  → "video"
- *   payload = data[10:]                         → JPEG bytes
+ * New approach: accept `sendFrame: (data: ArrayBuffer) => void` callback.
+ * useNavigationSession builds this callback using aria.sendBinary (which
+ * comes straight from useGeminiLive's wsRef — always the real open socket).
+ * No ref sharing, no null risk, no conditional hook call.
  *
- * Which then calls:
- *   video_handler.handle(connection_id, session_id, payload, session_mode)
- *
- * Key design decisions:
- *   - 1 FPS (Gemini Live hard cap — enforced server-side too)
- *   - Rear camera ('environment') for navigation
- *   - Max 768×768 (Gemini's optimal resolution from docs)
- *   - toBlob('image/jpeg', 0.7) for good quality/size balance
- *   - Accepts a wsRef so it shares the same WS as useGeminiLive
- *     (avoids a second WS connection for the same session_id)
- *
- * Usage:
- *   // Get wsRef from useNavigationSession which exposes it from useGeminiLive
- *   const { videoRef, startCapture, stopCapture, isCapturing } = useMediaCapture({
- *     wsRef,
- *     enabled: sessionActive,
- *   })
- *   <video ref={videoRef} autoPlay muted playsInline className="..." />
+ * Everything else is identical: 1 FPS, JPEG encoding, binary frame format.
  */
 
 import { useRef, useState, useCallback, useEffect } from 'react'
@@ -36,15 +22,15 @@ import { useRef, useState, useCallback, useEffect } from 'react'
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface UseMediaCaptureOptions {
-  /** WebSocket ref — must be the SAME ws as used by useGeminiLive */
-  wsRef: React.MutableRefObject<WebSocket | null>
+  /** Called with a fully-built binary frame ready to send over WebSocket */
+  sendFrame: (data: ArrayBuffer) => void
   /** Only capture when true */
   enabled?: boolean
-  /** Frames per second (default: 1 — Gemini Live max) */
+  /** Frames per second — capped at 1 (Gemini Live max) */
   fps?: number
-  /** JPEG quality 0–1 (default: 0.7) */
+  /** JPEG quality 0–1 */
   quality?: number
-  /** Max canvas dimension — Gemini optimal is 768 (default: 768) */
+  /** Max canvas dimension — Gemini optimal is 768 */
   maxDimension?: number
 }
 
@@ -58,14 +44,12 @@ export interface UseMediaCaptureReturn {
 }
 
 // ── Binary frame builder ──────────────────────────────────────────────────────
+// Wire format: [10-byte "video" header (zero-padded)] [raw JPEG bytes]
+// Matches router.py: header = data[:10].decode().strip("\x00") → "video"
 
 function buildVideoFrame(jpegBuffer: ArrayBuffer): ArrayBuffer {
-  const header = new Uint8Array(10)
-  // Write "video" into first 5 bytes, rest stays 0x00
-  new TextEncoder().encode('video').forEach((b, i) => { header[i] = b })
-
   const frame = new Uint8Array(10 + jpegBuffer.byteLength)
-  frame.set(header, 0)
+  new TextEncoder().encode('video').forEach((b, i) => { frame[i] = b })
   frame.set(new Uint8Array(jpegBuffer), 10)
   return frame.buffer
 }
@@ -73,7 +57,7 @@ function buildVideoFrame(jpegBuffer: ArrayBuffer): ArrayBuffer {
 // ── Hook ──────────────────────────────────────────────────────────────────────
 
 export function useMediaCapture({
-  wsRef,
+  sendFrame,
   enabled = true,
   fps = 1,
   quality = 0.7,
@@ -81,108 +65,116 @@ export function useMediaCapture({
 }: UseMediaCaptureOptions): UseMediaCaptureReturn {
 
   const [isCapturing, setIsCapturing] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError]             = useState<string | null>(null)
 
-  const videoRef   = useRef<HTMLVideoElement | null>(null)
-  const streamRef  = useRef<MediaStream | null>(null)
-  const canvasRef  = useRef<HTMLCanvasElement | null>(null)
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const videoRef     = useRef<HTMLVideoElement | null>(null)
+  const streamRef    = useRef<MediaStream | null>(null)
+  const canvasRef    = useRef<HTMLCanvasElement | null>(null)
+  const intervalRef  = useRef<ReturnType<typeof setInterval> | null>(null)
   const frameCountRef = useRef(0)
+  // Keep sendFrame in a ref so the interval callback always has the latest version
+  const sendFrameRef = useRef(sendFrame)
+  useEffect(() => { sendFrameRef.current = sendFrame }, [sendFrame])
 
   // ── Frame capture ─────────────────────────────────────────────────────────
 
   const captureFrame = useCallback(() => {
-    const ws = wsRef.current
-    if (!ws || ws.readyState !== WebSocket.OPEN) return
-
-    const video = videoRef.current
+    const video  = videoRef.current
     const canvas = canvasRef.current
-    if (!video || !canvas || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return
+    if (!video || !canvas) {
+      console.debug('[VIDEO-CAPTURE] captureFrame: video or canvas not ready')
+      return
+    }
+    if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+      console.debug(`[VIDEO-CAPTURE] captureFrame: video not ready (readyState=${video.readyState})`)
+      return
+    }
 
     const vw = video.videoWidth
     const vh = video.videoHeight
-    if (!vw || !vh) return
+    if (!vw || !vh) {
+      console.debug('[VIDEO-CAPTURE] captureFrame: video dimensions not available yet')
+      return
+    }
 
-    // Scale to fit within maxDimension while maintaining aspect ratio
-    const scale = Math.min(maxDimension / vw, maxDimension / vh, 1.0)
-    canvas.width  = Math.round(vw * scale)
-    canvas.height = Math.round(vh * scale)
+    const scale    = Math.min(maxDimension / vw, maxDimension / vh, 1.0)
+    canvas.width   = Math.round(vw * scale)
+    canvas.height  = Math.round(vh * scale)
 
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
 
-    // Encode as JPEG and send
     canvas.toBlob((blob) => {
       if (!blob) return
       blob.arrayBuffer().then((jpegBuffer) => {
-        const ws = wsRef.current  // Re-check inside async callback
-        if (!ws || ws.readyState !== WebSocket.OPEN) return
-
         const frame = buildVideoFrame(jpegBuffer)
-        ws.send(frame)
+        sendFrameRef.current(frame)
 
         frameCountRef.current++
         const n = frameCountRef.current
-        if (n <= 5 || n % 60 === 0) {
+        if (n <= 5 || n % 30 === 0) {
           console.log(
             `[VIDEO-CAPTURE] 📤 Frame #${n}: ` +
-            `${canvas.width}×${canvas.height}, ${jpegBuffer.byteLength}B`
+            `${canvas.width}×${canvas.height}, ${jpegBuffer.byteLength}B JPEG`
           )
         }
       }).catch((err) => {
-        console.warn('[VIDEO-CAPTURE] ⚠️ toBlob→arrayBuffer failed:', err)
+        console.warn('[VIDEO-CAPTURE] ⚠️ arrayBuffer() failed:', err)
       })
     }, 'image/jpeg', quality)
-  }, [wsRef, quality, maxDimension])
+  }, [quality, maxDimension])
 
   // ── Start / stop ──────────────────────────────────────────────────────────
 
   const startCapture = useCallback(async () => {
     if (isCapturing) return
-    if (typeof navigator === 'undefined' || !navigator.mediaDevices) {
+    if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
       setError('Camera not supported in this environment')
       return
     }
 
     setError(null)
+    console.log('[VIDEO-CAPTURE] 🎥 Requesting camera access…')
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
-          facingMode: 'environment',    // Rear camera for navigation
+          facingMode: 'environment',
           width:  { ideal: 1280, max: 1920 },
           height: { ideal: 720,  max: 1080 },
         },
-        audio: false,                   // Audio handled by useGeminiLive
+        audio: false,
       })
 
       streamRef.current = stream
 
       if (videoRef.current) {
         videoRef.current.srcObject = stream
-        await videoRef.current.play().catch(() => {
-          // play() rejection is non-fatal — autoPlay handles it
-        })
+        try {
+          await videoRef.current.play()
+          console.log('[VIDEO-CAPTURE] ▶️ Video element playing')
+        } catch {
+          // play() rejection is non-fatal — autoPlay handles it on most browsers
+        }
+      } else {
+        console.warn('[VIDEO-CAPTURE] ⚠️ videoRef.current is null — video element not mounted yet')
       }
 
-      // Create off-screen canvas for frame encoding
-      canvasRef.current = document.createElement('canvas')
+      canvasRef.current   = document.createElement('canvas')
       frameCountRef.current = 0
 
-      const intervalMs = Math.max(Math.round(1000 / fps), 1000)  // Min 1s (1 FPS)
+      // Enforce minimum 1s interval (1 FPS — Gemini Live hard cap)
+      const intervalMs = Math.max(Math.round(1000 / fps), 1000)
       intervalRef.current = setInterval(captureFrame, intervalMs)
 
       setIsCapturing(true)
-      console.log(
-        `[VIDEO-CAPTURE] ✅ Started — ${fps} FPS, ` +
-        `quality=${quality}, maxDim=${maxDimension}`
-      )
+      console.log(`[VIDEO-CAPTURE] ✅ Started — interval=${intervalMs}ms, quality=${quality}, maxDim=${maxDimension}`)
 
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Camera access failed'
-      console.error('[VIDEO-CAPTURE] ❌', msg)
+      console.error('[VIDEO-CAPTURE] ❌ getUserMedia failed:', msg)
       setError(msg)
     }
   }, [isCapturing, fps, quality, maxDimension, captureFrame])
@@ -199,15 +191,13 @@ export function useMediaCapture({
       videoRef.current.srcObject = null
     }
 
-    setIsCapturing(false)
     console.log(`[VIDEO-CAPTURE] ⏹️ Stopped — sent ${frameCountRef.current} frames total`)
+    setIsCapturing(false)
   }, [])
 
   // ── Auto-stop when disabled ───────────────────────────────────────────────
   useEffect(() => {
-    if (!enabled && isCapturing) {
-      stopCapture()
-    }
+    if (!enabled && isCapturing) stopCapture()
   }, [enabled, isCapturing, stopCapture])
 
   // ── Cleanup on unmount ────────────────────────────────────────────────────
