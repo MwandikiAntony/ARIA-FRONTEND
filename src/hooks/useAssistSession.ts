@@ -217,7 +217,7 @@ export function useAssistSession() {
       // Send mode + system prompt hint
       setTimeout(() => {
         aria.sendText(JSON.stringify({ type: 'set_mode', mode: 'assist' }));
-        aria.sendControlMessage('start_intro');
+        aria.sendText(JSON.stringify({ type: 'control', action: 'start_intro' }));
 
         // Send system prompt context to Gemini
         if (initialQuery) {
