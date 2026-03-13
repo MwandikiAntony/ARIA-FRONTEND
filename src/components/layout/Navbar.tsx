@@ -24,12 +24,24 @@ export const Navbar: React.FC = () => {
   }, [pathname]);
 
   const navLinks = [
-    { href: '/', label: 'Home' },
-    { href: '/navigate?autostart=true', label: 'Navigate' },
-    { href: '/coach', label: 'Coach' },
-    { href: '/dashboard', label: 'Dashboard' },
-    { href: '/settings', label: 'Settings' },
+    { href: '/',                        label: 'Home',      icon: '⌂' },
+    { href: '/navigate?autostart=true', label: 'Navigate',  icon: '◉' },
+    { href: '/coach',                   label: 'Coach',     icon: '◈' },
+    { href: '/assist',                  label: 'Assist',    icon: '✦' }, // NEW
+    { href: '/dashboard',               label: 'Dashboard', icon: '▦' },
+    { href: '/settings',                label: 'Settings',  icon: '⚙' },
   ];
+
+  // Active color per page
+  const accentColor = (href: string) => {
+    const path = href.split('?')[0];
+    if (path === '/navigate') return 'cyan';
+    if (path === '/coach') return 'amber';
+    if (path === '/assist') return 'emerald';
+    return 'cyan';
+  };
+
+  const isActive = (href: string) => pathname === href.split('?')[0];
 
   return (
     <>
@@ -53,20 +65,28 @@ export const Navbar: React.FC = () => {
 
         {/* Desktop Navigation */}
         <ul className="hidden md:flex gap-1">
-          {navLinks.map((link) => (
-            <li key={link.href}>
-              <Link
-                href={link.href}
-                className={`font-mono text-xs font-medium tracking-wider uppercase px-3.5 py-1.5 rounded-sm transition-all duration-200 relative ${
-                  pathname === link.href.split('?')[0]
-                    ? 'text-cyan bg-cyan-ghost after:absolute after:bottom-[-1px] after:left-1/2 after:-translate-x-1/2 after:w-5 after:h-0.5 after:bg-cyan after:rounded-full'
-                    : 'text-text-secondary hover:text-cyan hover:bg-cyan-ghost'
-                }`}
-              >
-                {link.label}
-              </Link>
-            </li>
-          ))}
+          {navLinks.map((link) => {
+            const active = isActive(link.href);
+            const isAssist = link.href === '/assist';
+            return (
+              <li key={link.href}>
+                <Link
+                  href={link.href}
+                  className={`font-mono text-xs font-medium tracking-wider uppercase px-3.5 py-1.5 rounded-sm transition-all duration-200 relative ${
+                    active
+                      ? isAssist
+                        ? 'text-emerald-400 bg-emerald-950/40 after:absolute after:bottom-[-1px] after:left-1/2 after:-translate-x-1/2 after:w-5 after:h-0.5 after:bg-emerald-400 after:rounded-full'
+                        : 'text-cyan bg-cyan-ghost after:absolute after:bottom-[-1px] after:left-1/2 after:-translate-x-1/2 after:w-5 after:h-0.5 after:bg-cyan after:rounded-full'
+                      : isAssist
+                        ? 'text-text-secondary hover:text-emerald-400 hover:bg-emerald-950/30'
+                        : 'text-text-secondary hover:text-cyan hover:bg-cyan-ghost'
+                  }`}
+                >
+                  {link.label}
+                </Link>
+              </li>
+            );
+          })}
         </ul>
 
         <div className="flex items-center gap-3 ml-4 md:ml-8">
@@ -84,26 +104,12 @@ export const Navbar: React.FC = () => {
 
           {/* Mobile Hamburger */}
           <button
-            className={`md:hidden flex flex-col justify-center items-center w-9 h-9 gap-1.5 ${
-              isMenuOpen ? 'open' : ''
-            }`}
+            className={`md:hidden flex flex-col justify-center items-center w-9 h-9 gap-1.5 ${isMenuOpen ? 'open' : ''}`}
             onClick={() => setIsMenuOpen(!isMenuOpen)}
           >
-            <span
-              className={`block w-5 h-0.5 bg-text-secondary rounded-sm transition-all duration-200 ${
-                isMenuOpen ? 'translate-y-2 rotate-45 bg-cyan' : ''
-              }`}
-            />
-            <span
-              className={`block w-5 h-0.5 bg-text-secondary rounded-sm transition-all duration-200 ${
-                isMenuOpen ? 'opacity-0' : ''
-              }`}
-            />
-            <span
-              className={`block w-5 h-0.5 bg-text-secondary rounded-sm transition-all duration-200 ${
-                isMenuOpen ? '-translate-y-2 -rotate-45 bg-cyan' : ''
-              }`}
-            />
+            <span className={`block w-5 h-0.5 bg-text-secondary rounded-sm transition-all duration-200 ${isMenuOpen ? 'translate-y-2 rotate-45 bg-cyan' : ''}`} />
+            <span className={`block w-5 h-0.5 bg-text-secondary rounded-sm transition-all duration-200 ${isMenuOpen ? 'opacity-0' : ''}`} />
+            <span className={`block w-5 h-0.5 bg-text-secondary rounded-sm transition-all duration-200 ${isMenuOpen ? '-translate-y-2 -rotate-45 bg-cyan' : ''}`} />
           </button>
         </div>
       </nav>
@@ -118,24 +124,28 @@ export const Navbar: React.FC = () => {
             transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
             className="fixed top-16 left-0 right-0 bg-bg-deep/98 backdrop-blur-xl border-b border-border z-40 p-4 flex flex-col gap-1"
           >
-            {navLinks.map((link) => (
-              <Link
-                key={link.href}
-                href={link.href}
-                className={`font-mono text-sm tracking-wider uppercase p-3 rounded-sm border border-transparent transition-all duration-200 flex items-center gap-2.5 ${
-                  pathname === link.href.split('?')[0]
-                    ? 'text-cyan bg-cyan-ghost border-cyan/15'
-                    : 'text-text-secondary hover:text-cyan hover:bg-cyan-ghost'
-                }`}
-              >
-                {link.label === 'Home' && '⌂'}
-                {link.label === 'Navigate' && '◉'}
-                {link.label === 'Coach' && '◈'}
-                {link.label === 'Dashboard' && '▦'}
-                {link.label === 'Settings' && '⚙'}
-                <span>{link.label}</span>
-              </Link>
-            ))}
+            {navLinks.map((link) => {
+              const active = isActive(link.href);
+              const isAssist = link.href === '/assist';
+              return (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className={`font-mono text-sm tracking-wider uppercase p-3 rounded-sm border border-transparent transition-all duration-200 flex items-center gap-2.5 ${
+                    active
+                      ? isAssist
+                        ? 'text-emerald-400 bg-emerald-950/40 border-emerald-500/15'
+                        : 'text-cyan bg-cyan-ghost border-cyan/15'
+                      : isAssist
+                        ? 'text-text-secondary hover:text-emerald-400 hover:bg-emerald-950/30'
+                        : 'text-text-secondary hover:text-cyan hover:bg-cyan-ghost'
+                  }`}
+                >
+                  <span>{link.icon}</span>
+                  <span>{link.label}</span>
+                </Link>
+              );
+            })}
           </motion.div>
         )}
       </AnimatePresence>
