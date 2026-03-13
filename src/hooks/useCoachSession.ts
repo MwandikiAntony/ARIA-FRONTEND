@@ -130,10 +130,7 @@ export function useCoachSession(): UseCoachSessionReturn {
   const aria = useAriaIntro();
 
   // ── Agent state driven by WS messages ────────────────────────────────────
-  const wsMessage = aria.subscribeToMessages
-    ? undefined  // subscribeToMessages is callback-based; wsMessage below handles it
-    : undefined;
-
+  // subscribeToMessages is callback-based — state is managed via lastWsMessage below.
   const [lastWsMessage, setLastWsMessage] = useState<any>(null);
 
   useEffect(() => {
