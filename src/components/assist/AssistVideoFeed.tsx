@@ -9,7 +9,7 @@ import React, { useEffect, useRef } from 'react';
 import type { AssistSessionPhase } from '@/hooks/useAssistSession';
 
 interface AssistVideoFeedProps {
-  videoRef: React.RefObject<HTMLVideoElement>;
+  videoRef: React.RefObject<HTMLVideoElement | null>;
   phase: AssistSessionPhase;
   isCameraOn: boolean;
   cameraFacing: 'environment' | 'user';

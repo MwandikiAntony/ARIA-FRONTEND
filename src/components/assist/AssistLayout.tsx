@@ -14,7 +14,7 @@ import type { AssistSessionState } from '@/hooks/useAssistSession';
 
 interface AssistLayoutProps {
   session: AssistSessionState;
-  videoRef: React.RefObject<HTMLVideoElement>;
+  videoRef: React.RefObject<HTMLVideoElement | null>;
   isSpeaking: boolean;
   onFlipCamera: () => void;
   onToggleCamera: () => void;
