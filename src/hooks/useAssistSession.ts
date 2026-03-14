@@ -101,6 +101,10 @@ export function useAssistSession() {
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const transcriptRef = useRef<TranscriptEntry[]>([]);
+  const phaseRef = useRef<AssistSessionPhase>('idle');
+
+  // Keep phaseRef in sync for use inside callbacks/effects without stale closure
+  useEffect(() => { phaseRef.current = phase; }, [phase]);
 
   // ── Shared ARIA session from context ─────────────────────────────────────
   const aria = useAriaContext();
@@ -137,10 +141,23 @@ export function useAssistSession() {
     const text = aria.transcript;
 
     // Auto-extract task title: "Task: [title]"
+    // If ARIA says "Task: X" while in listening phase, treat it as a voice task selection
+    // and transition to active (start video, hide shortcuts)
     const titleMatch = text.match(/Task:\s*(.+?)(?:\.|$)/i);
-    if (titleMatch && titleMatch[1] && !taskTitle) {
-      setTaskTitle(titleMatch[1].trim());
-      addTimelineEvent(titleMatch[1].trim(), 'info');
+    if (titleMatch && titleMatch[1]) {
+      const detectedTitle = titleMatch[1].trim();
+      if (phaseRef.current === 'listening' && !taskTitle) {
+        // Voice-detected task — trigger the same flow as clicking a shortcut
+        setTaskTitle(detectedTitle);
+        addTimelineEvent(`Task detected: "${detectedTitle}"`, 'info');
+        // Start camera and move to active
+        startCapture().catch(() => {});
+        setPhase('active');
+        setSessionDuration(0);
+      } else if (!taskTitle) {
+        setTaskTitle(detectedTitle);
+        addTimelineEvent(detectedTitle, 'info');
+      }
     }
 
     // Auto-extract steps: "Steps:\n1. ...\n2. ..."
@@ -253,9 +270,15 @@ export function useAssistSession() {
   const endSession = useCallback(async () => {
     aria.stop();
     stopCapture();
-    setPhase('ended');
-    addTimelineEvent('Session ended', 'info');
+    setPhase('idle');   // back to idle so page can auto-restart cleanly
+    setTaskTitle('');
+    setTranscript([]);
+    setSteps([]);
+    setTimeline([]);
+    setSessionDuration(0);
+    transcriptRef.current = [];
     if (timerRef.current) clearInterval(timerRef.current);
+    addTimelineEvent('Session ended', 'info');
   }, [aria, stopCapture]);
 
   // selectTask — called when user clicks a shortcut OR ARIA detects a task from voice.

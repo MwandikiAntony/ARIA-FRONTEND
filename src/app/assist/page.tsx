@@ -52,10 +52,20 @@ export default function AssistPage() {
   }, [setPageFocus]);
 
   // ── Auto-start voice session once WS is confirmed ready ──────────────────
-  // Wait for ariaState === 'ready' before calling startSession.
-  // This prevents ARIA speaking before the frontend has fully initialised
-  // and before the WebSocket connection is confirmed open.
+  // Fires when:
+  //   a) First load: ariaState becomes 'ready' and phase is 'idle'
+  //   b) After End: endSession() resets phase to 'idle', effect fires again
+  // sessionStartedRef resets whenever phase returns to 'idle' so the effect
+  // can re-trigger cleanly after the user ends a session.
   const sessionStartedRef = React.useRef(false);
+
+  useEffect(() => {
+    if (session.phase === 'idle') {
+      // Reset the guard so startSession can fire again
+      sessionStartedRef.current = false;
+    }
+  }, [session.phase]);
+
   useEffect(() => {
     if (ariaState === 'ready' && !sessionStartedRef.current && session.phase === 'idle') {
       sessionStartedRef.current = true;
