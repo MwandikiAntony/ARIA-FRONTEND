@@ -61,7 +61,7 @@ function ListeningDot() {
 
 function statusLabel(state: IntroState, isListening: boolean, isSpeaking: boolean): string {
   if (isSpeaking)                               return 'ARIA is speaking';
-  if (isListening && state === 'active')        return 'Listening…';
+  if (isListening)                              return 'Listening…';
   switch (state) {
     case 'waiting':           return 'Initialising…';
     case 'ready_to_activate': return 'ARIA — Ready';
@@ -92,8 +92,13 @@ export const AriaIntroBar: React.FC = () => {
   // 'stopped' now shows a restart prompt instead of disappearing.
   if (introState === 'idle') return null;
 
-  const isPersistentActive = introState === 'active' || introState === 'muted';
-  const isStopped          = introState === 'stopped';
+  // FIX: If ARIA is actually speaking or listening, the session is live — never
+  // show the "stopped" UI even if introState got set to 'stopped' incorrectly.
+  // This happens when a transient WS error sets geminiState='error' which flows
+  // to introState='stopped', but the session actually recovers and keeps working.
+  const isActuallyActive = isSpeaking || isListening;
+  const isStopped = introState === 'stopped' && !isActuallyActive;
+  const isPersistentActive = introState === 'active' || introState === 'muted' || isActuallyActive;
 
   return (
     <div
