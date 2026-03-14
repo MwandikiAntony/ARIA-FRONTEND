@@ -113,21 +113,8 @@ export const AssistAgentBar: React.FC<AssistAgentBarProps> = ({
             Say something or pick a task below
           </span>
         )}
-        {isListening && !isSpeaking && (
-          <span className="text-[11px] text-white/35 italic truncate">Listening…</span>
-        )}
-        {isListening && isSpeaking && (
-          <span className="text-[11px] font-medium truncate max-w-[200px]"
-            style={{ color: '#34d399cc' }}>
-            {transcript || 'Speaking…'}
-          </span>
-        )}
-        {isActive && (
-          <span className="text-[11px] font-medium truncate max-w-[160px]"
-            style={{ color: '#34d399bb' }}>
-            {taskTitle || 'Assist'}
-          </span>
-        )}
+
+
         {phase === 'paused' && (
           <span className="text-[10px] font-mono px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0"
             style={{ background:'rgba(251,191,36,0.1)', color:'#fbbf24', border:'1px solid rgba(251,191,36,0.2)' }}>
@@ -147,7 +134,7 @@ export const AssistAgentBar: React.FC<AssistAgentBarProps> = ({
       </div>
 
       {/* Right: controls */}
-      {!isIdle && (
+      {(isListening || isActive) && (
         <div className="flex items-center gap-2 shrink-0">
           {isActive && (
             <span className="text-[11px] font-mono text-white/25 tabular-nums">

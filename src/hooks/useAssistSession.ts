@@ -15,11 +15,11 @@ import { useMediaCapture } from '@/hooks/useMediaCapture';
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export type AssistSessionPhase =
-  | 'idle'        // page just loaded, session not started
-  | 'listening'   // ARIA session active, mic on, awaiting task selection
-  | 'active'      // task selected — video feed showing, ARIA helping
+  | 'idle'        // page just loaded, nothing started yet
+  | 'listening'   // ARIA on, video on, camera context sent, waiting for task pick
+  | 'active'      // task selected — shortcuts hidden, ARIA focused on task
   | 'paused'      // manually paused
-  | 'ended';      // session finished
+  | 'ended';      // session ended — show restart button
 
 export interface TranscriptEntry {
   id: string;
@@ -146,17 +146,14 @@ export function useAssistSession() {
     const titleMatch = text.match(/Task:\s*(.+?)(?:\.|$)/i);
     if (titleMatch && titleMatch[1]) {
       const detectedTitle = titleMatch[1].trim();
-      if (phaseRef.current === 'listening' && !taskTitle) {
-        // Voice-detected task — trigger the same flow as clicking a shortcut
+      if (!taskTitle) {
         setTaskTitle(detectedTitle);
-        addTimelineEvent(`Task detected: "${detectedTitle}"`, 'info');
-        // Start camera and move to active
-        startCapture().catch(() => {});
-        setPhase('active');
-        setSessionDuration(0);
-      } else if (!taskTitle) {
-        setTaskTitle(detectedTitle);
-        addTimelineEvent(detectedTitle, 'info');
+        addTimelineEvent(`Task: "${detectedTitle}"`, 'info');
+        // Voice-detected task — hide shortcuts, ARIA now focused on this task
+        if (phaseRef.current === 'listening' || phaseRef.current === 'idle') {
+          setPhase('active');
+          setSessionDuration(0);
+        }
       }
     }
 
@@ -229,31 +226,35 @@ export function useAssistSession() {
 
   const startSession = useCallback(async () => {
     try {
-      // ── Start mic so ARIA can hear the user
+      // Start mic and camera together
       await aria.enableVoice();
+      await startCapture();
 
-      // ── Send start_assist: creates Gemini session if needed + sends greeting
-      // Wait 200ms for mic AudioContext to settle first
-      await new Promise<void>((resolve) => setTimeout(resolve, 200));
+      // Wait for mic AudioContext to settle
+      await new Promise<void>((resolve) => setTimeout(resolve, 250));
+
+      // Tell backend to activate assist mode with camera-awareness greeting.
+      // The greeting instructs ARIA to:
+      //   a) confirm it can see through the camera
+      //   b) ask user to pick a task or say what they need
       aria.sendText(JSON.stringify({
         type: 'control',
         action: 'start_assist',
         initial_query: '',
+        camera_active: true,
       }));
 
-      // ── Move to 'listening' — NO video yet, shortcuts still visible
-      // Video only starts when user selects a specific task via selectTask()
       setPhase('listening');
       setSessionDuration(0);
       setTranscript([]);
       setSteps([]);
       setTimeline([]);
       setTaskTitle('');
-      addTimelineEvent('ARIA is listening — say or select a task', 'info');
+      transcriptRef.current = [];
     } catch (err) {
       console.error('[ASSIST] startSession error:', err);
     }
-  }, [aria]); // eslint-disable-line
+  }, [aria, startCapture]); // eslint-disable-line
 
   const pauseSession = useCallback(() => {
     aria.pause();
@@ -270,7 +271,7 @@ export function useAssistSession() {
   const endSession = useCallback(async () => {
     aria.stop();
     stopCapture();
-    setPhase('idle');   // back to idle so page can auto-restart cleanly
+    setPhase('ended');  // show 'Start again' button, no auto-restart
     setTaskTitle('');
     setTranscript([]);
     setSteps([]);
@@ -281,29 +282,22 @@ export function useAssistSession() {
     addTimelineEvent('Session ended', 'info');
   }, [aria, stopCapture]);
 
-  // selectTask — called when user clicks a shortcut OR ARIA detects a task from voice.
-  // Transitions from 'listening' to 'active': starts video and sets the task title.
-  const selectTask = useCallback(async (query: string, label: string) => {
+  // selectTask — user picked a task (by click or voice).
+  // Hides shortcuts, tells ARIA the specific task, starts task timer.
+  // Camera and mic are already running.
+  const selectTask = useCallback((query: string, label: string) => {
     setTaskTitle(label);
-    addTimelineEvent(`Task selected: "${label}"`, 'info');
-
-    // Send task to backend so ARIA starts helping immediately
+    addTimelineEvent(`Task: "${label}"`, 'info');
+    // Tell ARIA the specific task — it will immediately start helping
     aria.sendText(JSON.stringify({
       type: 'control',
       action: 'start_assist',
       initial_query: query,
+      camera_active: true,
     }));
-
-    // Start video capture now that a task is active
-    try {
-      await startCapture();
-    } catch (err) {
-      console.error('[ASSIST] Camera start error:', err);
-    }
-
     setPhase('active');
     setSessionDuration(0);
-  }, [aria, startCapture]);
+  }, [aria]);
 
   const toggleMute = useCallback(() => {
     if (isMuted) {

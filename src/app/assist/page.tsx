@@ -3,18 +3,21 @@
 /**
  * src/app/assist/page.tsx
  *
- * TWO STATES:
+ * LAYOUT (always):
+ *   [ARIA bar — top, fixed]
+ *   [Video feed — always visible]
+ *   [Task shortcuts — visible until task selected, then hidden]
+ *   [Transcript — below video, always]
+ *   [Sidebar — right, lg+]
  *
- * 1. idle / listening  → ARIA bar at top (auto-started), task shortcut grid visible.
- *                        No video. ARIA introduces itself and waits for task.
- *
- * 2. active / paused   → Shortcut grid hidden. Video feed + transcript shown.
- *                        ARIA bar stays at top with controls.
- *
- * Task selection triggers the idle→active transition (click OR voice via ARIA).
+ * STATES:
+ *   idle    — ARIA on, video on, shortcuts visible, no task yet
+ *   active  — task selected (click or voice), shortcuts hidden
+ *   paused  — muted/paused
+ *   ended   — show "Start again" button
  */
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useAssistSession } from '@/hooks/useAssistSession';
 import { useAriaContext } from '@/contexts/AriaContext';
 import { AssistAgentBar } from '@/components/assist/AssistAgentBar';
@@ -46,52 +49,31 @@ export default function AssistPage() {
     exportSession,
   } = useAssistSession();
 
-  // ── Shift ARIA focus to Assist on mount ──────────────────────────────────
+  // Shift ARIA persona to Assist on mount
   useEffect(() => {
     setPageFocus('assist');
   }, [setPageFocus]);
 
-  // ── Auto-start voice session once WS is confirmed ready ──────────────────
-  // Fires when:
-  //   a) First load: ariaState becomes 'ready' and phase is 'idle'
-  //   b) After End: endSession() resets phase to 'idle', effect fires again
-  // sessionStartedRef resets whenever phase returns to 'idle' so the effect
-  // can re-trigger cleanly after the user ends a session.
-  const sessionStartedRef = React.useRef(false);
-
+  // Auto-start once WS is ready — only fires once, not on phase changes
+  const startedRef = useRef(false);
   useEffect(() => {
-    if (session.phase === 'idle') {
-      // Reset the guard so startSession can fire again
-      sessionStartedRef.current = false;
-    }
-  }, [session.phase]);
-
-  useEffect(() => {
-    if (ariaState === 'ready' && !sessionStartedRef.current && session.phase === 'idle') {
-      sessionStartedRef.current = true;
+    if (ariaState === 'ready' && !startedRef.current) {
+      startedRef.current = true;
       startSession();
     }
-  }, [ariaState, session.phase, startSession]);
+  }, [ariaState]); // eslint-disable-line
 
   const transcriptText = session.transcript.length > 0
     ? session.transcript[session.transcript.length - 1]?.text ?? ''
     : '';
 
-  const showShortcuts = session.phase === 'idle' || session.phase === 'listening' || session.phase === 'ended';
-  const showVideo     = session.phase === 'active' || session.phase === 'paused';
-
-  // When user clicks a shortcut, selectTask transitions to active + starts video
-  const handleSelectTask = (query: string, label: string) => {
-    selectTask(query, label);
-  };
-
-  const handleDismissScreenshot = () => {
-    // handled internally in AssistVideoFeed via onDismissScreenshot
-  };
+  // Shortcuts visible until a task is actively selected
+  const showShortcuts = session.phase === 'idle' || session.phase === 'listening';
+  const showEnded = session.phase === 'ended';
 
   return (
     <>
-      {/* ── Agent bar — always at top (below navbar) ── */}
+      {/* ARIA bar — always at top below navbar */}
       <AssistAgentBar
         phase={session.phase}
         taskTitle={session.taskTitle}
@@ -105,53 +87,45 @@ export default function AssistPage() {
         onEnd={endSession}
       />
 
-      {/* ── Page content — always padded for bar (48px) + navbar (64px) ── */}
-      <div
-        className="min-h-screen"
-        style={{ background: '#070c07', paddingTop: '48px' }}
-      >
+      {/* Page content — padded below navbar (64px) + agent bar (48px) */}
+      <div className="min-h-screen" style={{ background: '#070c07', paddingTop: '48px' }}>
 
-        {/* ── IDLE / LISTENING: shortcut grid ── */}
-        {showShortcuts && (
-          <div className="max-w-2xl mx-auto px-4 py-10">
-
-            {/* Minimal header */}
-            <div className="text-center mb-8">
-              <div
-                className="w-14 h-14 rounded-2xl mx-auto mb-4 flex items-center justify-center"
-                style={{
-                  background: 'radial-gradient(circle, rgba(52,211,153,0.15) 0%, rgba(52,211,153,0.03) 100%)',
-                  border: '1px solid rgba(52,211,153,0.15)',
-                }}
-              >
-                <span className="text-2xl">✦</span>
-              </div>
-              <h1 className="text-2xl font-bold text-white/80 mb-1 tracking-tight">
-                ARIA <span style={{ color: '#34d399' }}>Assist</span>
-              </h1>
-              <p className="text-sm text-white/30 max-w-xs mx-auto">
-                {session.phase === 'listening'
-                  ? 'Tell me what you need help with, or tap a task below'
-                  : 'Your live AI assistant for any task'}
-              </p>
-            </div>
-
-            {/* Task shortcuts — full grid */}
-            <TaskShortcuts onSelect={handleSelectTask} />
-
-            {/* Soft hint */}
-            <p className="text-center text-[11px] text-white/20 mt-8 font-mono tracking-wider">
-              OR JUST SPEAK TO ARIA
-            </p>
+        {/* ── Ended state ── */}
+        {showEnded && (
+          <div className="flex flex-col items-center justify-center py-20 gap-4">
+            <p className="text-white/40 text-sm">Session ended</p>
+            <button
+              onClick={() => { startedRef.current = false; startSession(); }}
+              className="px-8 py-3 rounded-2xl text-sm font-semibold transition-all hover:brightness-110 active:scale-95"
+              style={{
+                background: 'linear-gradient(135deg, rgba(52,211,153,0.25) 0%, rgba(16,185,129,0.2) 100%)',
+                border: '1px solid rgba(52,211,153,0.3)',
+                color: '#34d399',
+              }}
+            >
+              Start again
+            </button>
           </div>
         )}
 
-        {/* ── ACTIVE / PAUSED: video + transcript + sidebar ── */}
-        {showVideo && (
+        {/* ── Main layout (idle + active + paused) ── */}
+        {!showEnded && (
           <div className="flex gap-4 px-4 py-4 max-w-7xl mx-auto">
 
-            {/* Left: video + transcript */}
+            {/* Left column */}
             <div className="flex flex-col gap-4 flex-1 min-w-0">
+
+              {/* Task shortcuts — shown until task selected */}
+              {showShortcuts && (
+                <div>
+                  <p className="text-[11px] text-white/25 uppercase tracking-widest font-mono mb-3 text-center">
+                    Say a task or pick one to begin
+                  </p>
+                  <TaskShortcuts onSelect={selectTask} />
+                </div>
+              )}
+
+              {/* Video feed — always visible */}
               <AssistVideoFeed
                 videoRef={videoRef}
                 phase={session.phase}
@@ -165,15 +139,17 @@ export default function AssistPage() {
                 onToggleCamera={toggleCamera}
                 onTakeScreenshot={takeScreenshot}
                 onDownloadScreenshot={downloadScreenshot}
-                onDismissScreenshot={handleDismissScreenshot}
+                onDismissScreenshot={() => {}}
               />
+
+              {/* Transcript — always below video */}
               <AssistTranscript
                 entries={session.transcript}
                 isSpeaking={isSpeaking}
               />
             </div>
 
-            {/* Right: sidebar (lg+) */}
+            {/* Right sidebar — lg+ */}
             <div className="w-72 shrink-0 hidden lg:flex flex-col" style={{ minHeight: '500px' }}>
               <AssistSidebar
                 steps={session.steps}
@@ -186,6 +162,7 @@ export default function AssistPage() {
                 onExport={exportSession}
               />
             </div>
+
           </div>
         )}
       </div>

@@ -43,7 +43,7 @@ export const AssistVideoFeed: React.FC<AssistVideoFeedProps> = ({
 
   // Start camera stream on this component's video element
   useEffect(() => {
-    if (!isCameraOn || phase === 'idle') return;
+    if (!isCameraOn || phase === 'ended') return;
     const constraints: MediaStreamConstraints = {
       video: {
         facingMode: cameraFacing,
@@ -68,7 +68,7 @@ export const AssistVideoFeed: React.FC<AssistVideoFeedProps> = ({
     };
   }, [isCameraOn, cameraFacing, phase, videoRef]);
 
-  const isActive = phase === 'active' || phase === 'paused';
+  const isActive = phase === 'idle' || phase === 'active' || phase === 'paused';
 
   return (
     <div className="relative w-full rounded-2xl overflow-hidden" style={{ background: '#0a0f0a' }}>
