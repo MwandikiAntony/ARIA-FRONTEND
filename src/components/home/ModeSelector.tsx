@@ -1,4 +1,4 @@
- 'use client';
+'use client';
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -28,6 +28,16 @@ export const ModeSelector: React.FC = () => {
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
           <ModeCard
+            type="assist"
+            title="General Assistant"
+            description="Everyday AI help — homework, quick questions, cooking, repairs. Point your camera and ask anything."
+            tags={['Live Camera', 'Voice', 'Any Task', 'Hands-Free']}
+            icon="✦"
+            isActive={activeMode === 'assist'}
+            onSelect={() => handleSelect('assist')}
+          />
+
+          <ModeCard
             type="nav"
             title="Navigate"
             description="AI-powered eyes for the world. Real-time obstacle detection, turn-by-turn guidance, and safety alerts."
@@ -45,16 +55,6 @@ export const ModeSelector: React.FC = () => {
             icon="◈"
             isActive={activeMode === 'coach'}
             onSelect={() => handleSelect('coach')}
-          />
-
-          <ModeCard
-            type="assist"
-            title="Assist"
-            description="A live visual AI for everyday tasks. Cooking, studying, fixing, creating — point your camera and get help."
-            tags={['Live Camera', 'Voice', 'Steps', 'Any Task']}
-            icon="✦"
-            isActive={activeMode === 'assist'}
-            onSelect={() => handleSelect('assist')}
           />
         </div>
       </div>

@@ -17,7 +17,7 @@ export const OnboardingSteps: React.FC = () => {
     {
       number: '3',
       title: 'Choose Mode',
-      description: 'Select Navigation for outdoor guidance or Coach for performance improvement.',
+      description: 'Select General Assistant for daily tasks, Navigation for outdoor guidance, or Coach for performance improvement.',
       status: 'active',
     },
     {
@@ -75,4 +75,4 @@ export const OnboardingSteps: React.FC = () => {
       </div>
     </section>
   );
-}; 
+};

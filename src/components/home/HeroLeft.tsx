@@ -50,17 +50,21 @@ export const HeroLeft: React.FC = () => {
       </h2>
 
       <p className="text-base font-light leading-relaxed text-text-secondary max-w-md mb-12">
-        One unified AI platform. Navigate the world as a visually impaired individual — or master every
-        conversation with real-time coaching. Powered by Gemini Live API, built on Next.js + Python FastAPI
-        WebSocket.
+        One unified AI platform. Navigate the world as a visually impaired individual, master every
+        conversation with real-time coaching, or get instant help with everyday tasks — homework,
+        quick questions, hands-free assistance, and more. Powered by Gemini Live API, built on
+        Next.js + Python FastAPI WebSocket.
       </p>
 
       <div className="flex flex-wrap gap-4 mb-12">
-        <Button variant="primary" onClick={() => router.push('/navigate')}>
-          ◉ Start Navigation
+        <Button variant="primary" onClick={() => router.push('/assist')}>
+          ✦ General Assistant
+        </Button>
+        <Button variant="ghost" onClick={() => router.push('/navigate')}>
+          ◉ Navigation
         </Button>
         <Button variant="ghost" onClick={() => router.push('/coach')}>
-          ◈ Launch Coach
+          ◈ Coach
         </Button>
       </div>
 
@@ -78,7 +82,7 @@ export const HeroLeft: React.FC = () => {
           <div className="font-mono text-[10px] tracking-wider text-text-muted uppercase">Agent States</div>
         </div>
         <div className="text-center md:text-left">
-          <div className="font-display text-3xl md:text-4xl font-bold text-cyan leading-tight">2</div>
+          <div className="font-display text-3xl md:text-4xl font-bold text-cyan leading-tight">3</div>
           <div className="font-mono text-[10px] tracking-wider text-text-muted uppercase">AI Modes</div>
         </div>
       </div>
