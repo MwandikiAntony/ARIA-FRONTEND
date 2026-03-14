@@ -210,44 +210,33 @@ export function useAssistSession() {
 
   // ── Actions ───────────────────────────────────────────────────────────────
 
-  const startSession = useCallback(async (initialQuery?: string) => {
+  const startSession = useCallback(async () => {
     try {
-      // ── Step 1: Start mic so ARIA can hear the user
-      // enableVoice() calls startListening() internally which opens the
-      // AudioContext and starts streaming PCM to the backend.
+      // ── Start mic so ARIA can hear the user
       await aria.enableVoice();
 
-      // ── Step 2: Send start_assist to backend.
-      // This tells the router to:
-      //   a) set session mode to "assist" (video skips object detection)
-      //   b) send an Assist-focused greeting to Gemini (makes ARIA speak first)
-      //   c) create a Gemini session if one doesn't exist yet
-      // We wait 200ms for the mic AudioContext to settle before sending.
+      // ── Send start_assist: creates Gemini session if needed + sends greeting
+      // Wait 200ms for mic AudioContext to settle first
       await new Promise<void>((resolve) => setTimeout(resolve, 200));
       aria.sendText(JSON.stringify({
         type: 'control',
         action: 'start_assist',
-        initial_query: initialQuery || '',
+        initial_query: '',
       }));
 
-      // ── Step 3: Start video capture (camera → backend frames)
-      await startCapture();
-
-      // ── Step 4: Update UI state
-      setPhase('active');
+      // ── Move to 'listening' — NO video yet, shortcuts still visible
+      // Video only starts when user selects a specific task via selectTask()
+      setPhase('listening');
       setSessionDuration(0);
       setTranscript([]);
       setSteps([]);
       setTimeline([]);
-      setTaskTitle(initialQuery ? formatTitle(initialQuery) : '');
-      addTimelineEvent(
-        initialQuery ? `Task: "${initialQuery}"` : 'Session started — show ARIA your task',
-        'info'
-      );
+      setTaskTitle('');
+      addTimelineEvent('ARIA is listening — say or select a task', 'info');
     } catch (err) {
       console.error('[ASSIST] startSession error:', err);
     }
-  }, [aria, startCapture]); // eslint-disable-line
+  }, [aria]); // eslint-disable-line
 
   const pauseSession = useCallback(() => {
     aria.pause();

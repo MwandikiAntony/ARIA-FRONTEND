@@ -30,6 +30,7 @@ export default function AssistPage() {
     session,
     videoRef,
     isSpeaking,
+    ariaState,
     startSession,
     pauseSession,
     resumeSession,
@@ -45,13 +46,22 @@ export default function AssistPage() {
     exportSession,
   } = useAssistSession();
 
-  // ── On mount: shift ARIA focus + auto-start voice session ────────────────
+  // ── Shift ARIA focus to Assist on mount ──────────────────────────────────
   useEffect(() => {
     setPageFocus('assist');
-    // Small delay so WS is confirmed open before sending start_assist
-    const t = setTimeout(() => { startSession(); }, 600);
-    return () => clearTimeout(t);
-  }, []); // eslint-disable-line
+  }, [setPageFocus]);
+
+  // ── Auto-start voice session once WS is confirmed ready ──────────────────
+  // Wait for ariaState === 'ready' before calling startSession.
+  // This prevents ARIA speaking before the frontend has fully initialised
+  // and before the WebSocket connection is confirmed open.
+  const sessionStartedRef = React.useRef(false);
+  useEffect(() => {
+    if (ariaState === 'ready' && !sessionStartedRef.current && session.phase === 'idle') {
+      sessionStartedRef.current = true;
+      startSession();
+    }
+  }, [ariaState, session.phase, startSession]);
 
   const transcriptText = session.transcript.length > 0
     ? session.transcript[session.transcript.length - 1]?.text ?? ''
