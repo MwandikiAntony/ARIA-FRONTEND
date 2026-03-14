@@ -87,6 +87,9 @@ function NavigateContent() {
         onDisableVoice={nav.disableVoice}
         onPause={nav.pause}
         onResume={nav.resume}
+        routeETA={nav.route?.totalDuration ?? null}
+        routeDistance={nav.route?.totalDistance ?? null}
+        destination={nav.destination}
       />
 
       {/* Spacer: NavigationAgentBar is fixed at top-16 (~44px tall) */}
@@ -105,6 +108,13 @@ function NavigateContent() {
         gpsAccuracy={nav.accuracy}
         position={nav.position}
         sessionId={nav.sessionId}
+        route={nav.route}
+        currentAddress={nav.currentAddress}
+        travelMode={nav.travelMode}
+        setTravelMode={nav.setTravelMode}
+        calculateRoute={nav.calculateRoute}
+        clearRoute={nav.clearRoute}
+        destination={nav.destination}
       />
     </>
   );

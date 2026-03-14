@@ -27,6 +27,7 @@ import { useAriaIntro, type IntroState } from './useAriaIntro'
 import { useMediaCapture } from './useMediaCapture'
 import { useGeolocation, type Environment } from './useGeolocation'
 import { useAgentState, type AgentState } from './useAgentState'
+import { useGoogleMapsRoute, type MapsRoute, type TravelMode } from './useGoogleMapsRoute'
 
 export interface DetectionResult {
   label: string
@@ -65,12 +66,21 @@ export interface UseNavigationSessionReturn {
   agentState: AgentState
   urgencyScore: number
   isConnected: boolean
+  route: MapsRoute | null
+  currentAddress: string | null
+  travelMode: TravelMode
+  setTravelMode: (mode: TravelMode) => void
+  calculateRoute: (destination: string) => Promise<void>
+  clearRoute: () => void
+  destination: string | null
+  setDestination: (d: string | null) => void
 }
 
 export function useNavigationSession(): UseNavigationSessionReturn {
 
   const [detections, setDetections] = useState<DetectionResult[]>([])
   const [lastWsMessage, setLastWsMessage] = useState<any>(null)
+  const [destination, setDestination] = useState<string | null>(null)
 
   const aria = useAriaIntro()
 
@@ -153,6 +163,58 @@ export function useNavigationSession(): UseNavigationSessionReturn {
     mode: 'navigation',
   })
 
+  // Google Maps route hook — position drives live dot + step tracking
+  const {
+    route,
+    isLoading: routeLoading,
+    error: routeError,
+    currentAddress,
+    travelMode,
+    setTravelMode,
+    calculateRoute: calcRoute,
+    clearRoute,
+  } = useGoogleMapsRoute(position)
+
+  // When current address resolves for the first time, tell ARIA via context
+  const addressAnnouncedRef = useRef(false)
+  useEffect(() => {
+    if (!currentAddress || addressAnnouncedRef.current || !isSessionActive) return
+    addressAnnouncedRef.current = true
+    aria.sendText(JSON.stringify({
+      type: 'control',
+      action: 'update_context',
+      context: {
+        instruction: `The user's current location is: ${currentAddress}. ` +
+          `Announce this to them now: say "You are currently at ${currentAddress}." ` +
+          `Then wait for their next instruction.`,
+      },
+    }))
+  }, [currentAddress]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // When a route is calculated, tell ARIA the first instruction
+  const routeAnnouncedRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!route || !destination) return
+    if (routeAnnouncedRef.current === destination) return
+    routeAnnouncedRef.current = destination
+    const first = route.steps[0]?.instruction ?? 'Follow the route on screen'
+    aria.sendText(JSON.stringify({
+      type: 'control',
+      action: 'update_context',
+      context: {
+        instruction: `A route to "${destination}" has been calculated. ` +
+          `Total: ${route.totalDistance}, estimated ${route.totalDuration}. ` +
+          `Tell the user: "Route found. ${route.totalDistance}, about ${route.totalDuration}. ` +
+          `First: ${first}" — then guide them step by step as they move.`,
+      },
+    }))
+  }, [route]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const calculateRoute = useCallback(async (dest: string) => {
+    setDestination(dest)
+    await calcRoute(dest)
+  }, [calcRoute])
+
   return {
     introState: aria.introState,
     sessionId: aria.sessionId,
@@ -186,5 +248,13 @@ export function useNavigationSession(): UseNavigationSessionReturn {
     isConnected: aria.geminiState === 'ready' ||
                  aria.geminiState === 'speaking' ||
                  aria.geminiState === 'listening',
+    route,
+    currentAddress,
+    travelMode,
+    setTravelMode,
+    calculateRoute,
+    clearRoute,
+    destination,
+    setDestination,
   }
 }

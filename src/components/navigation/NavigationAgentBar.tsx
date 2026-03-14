@@ -18,6 +18,9 @@ interface NavigationAgentBarProps {
   onDisableVoice: () => void;
   onPause: () => void;
   onResume: () => void;
+  routeETA?: string | null;
+  routeDistance?: string | null;
+  destination?: string | null;
 }
 
 function SpeakingWave() {
@@ -83,6 +86,9 @@ export const NavigationAgentBar: React.FC<NavigationAgentBarProps> = ({
   onDisableVoice,
   onPause,
   onResume,
+  routeETA,
+  routeDistance,
+  destination,
 }) => {
   if (introState === 'idle') return null;
 
@@ -146,6 +152,12 @@ export const NavigationAgentBar: React.FC<NavigationAgentBarProps> = ({
           <span className="hidden sm:flex items-center gap-1 font-mono text-[10px] text-green">
             <span className="w-1.5 h-1.5 rounded-full bg-green shadow-[0_0_6px_#00e676]" />
             GPS LOCKED
+          </span>
+        )}
+
+        {routeETA && destination && (
+          <span className="hidden md:flex items-center gap-1.5 font-mono text-[10px] text-cyan bg-cyan/10 border border-cyan/20 rounded-full px-2 py-0.5">
+            🧭 {routeETA} · {routeDistance}
           </span>
         )}
 
