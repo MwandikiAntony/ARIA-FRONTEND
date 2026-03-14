@@ -1,8 +1,33 @@
 /**
- * useAriaIntro.ts — PATCHED (3 additions, nothing removed or changed)
+ * useAriaIntro.ts
  *
- * Passes sendBinary, sendText, and subscribeToMessages through from
- * useGeminiLive so useNavigationSession can access them.
+ * CHANGES vs previous version:
+ *
+ * 1. activate() NOW ACCEPTS AN OPTIONAL mode PARAMETER
+ *    WHY: Previously activate() always sent sendControlMessage('start_intro')
+ *    regardless of which page called it. When useNavigationSession called
+ *    useAriaIntro() and then activate(), the backend received start_intro which
+ *    created a session with mode=None (home) and triggered the home greeting:
+ *    "Hi, I am ARIA — I run on three modes: General Assistant, Navigation, Coach..."
+ *    Then 1ms later start_navigation arrived and queued on top of the same session.
+ *    Result: two full speeches back-to-back — home intro then navigation intro.
+ *    Proven in logs at 8:43:58.324 (start_intro) and 8:43:58.325 (start_navigation).
+ *
+ *    FIX: activate(mode?) accepts an optional mode string.
+ *    - activate()              → sends 'start_intro'   (home page, unchanged)
+ *    - activate('navigation')  → sends 'start_navigation' (nav page, no home intro)
+ *    - activate('coach')       → sends 'start_coach'   (coach page, future use)
+ *
+ *    useNavigationSession calls activate('navigation') — the home greeting
+ *    is never sent. The backend start_navigation handler creates a fresh
+ *    Gemini session with mode='navigation' and sends only the nav greeting.
+ *
+ * 2. UseAriaIntroReturn INTERFACE UPDATED
+ *    activate signature changed from () => Promise<void>
+ *    to (mode?: string) => Promise<void>
+ *    All existing callers (home page AriaIntroBar) pass no argument — unchanged.
+ *
+ * Everything else is identical to the previous version.
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -30,8 +55,7 @@ export interface UseAriaIntroReturn {
   sendBinary: (data: ArrayBuffer) => void;
   sendText: (text: string) => void;
   subscribeToMessages: (handler: (msg: any) => void) => () => void;
-  // ─────────────────────────────────────────────────────────────────
-  activate: () => Promise<void>;
+  activate: (mode?: string) => Promise<void>;  // FIX: mode param added — see file header
   stop: () => void;
   mute: () => void;
   unmute: () => void;
@@ -106,7 +130,14 @@ export function useAriaIntro(): UseAriaIntroReturn {
 
   // ── activate() ────────────────────────────────────────────────────────────
 
-  const activate = useCallback(async () => {
+  // FIX: activate(mode?) — mode determines which control message is sent.
+  // Home page:       activate()              → 'start_intro'
+  // Navigation page: activate('navigation')  → 'start_navigation'
+  // This prevents home intro from firing on navigation page.
+  // Without this fix, activate() always sent 'start_intro' regardless of page,
+  // causing the home greeting to play on navigation, then navigation greeting
+  // stacked on top = two voices speaking simultaneously.
+  const activate = useCallback(async (mode?: string) => {
     if (introFiredRef.current) return;
     if (geminiState !== 'ready' && introState !== 'ready_to_activate') return;
 
@@ -121,7 +152,15 @@ export function useAriaIntro(): UseAriaIntroReturn {
       }
     }
 
-    sendControlMessage('start_intro');
+    // FIX: route to the correct backend action based on mode.
+    // 'navigation' → start_navigation (creates fresh nav session, nav greeting only)
+    // undefined    → start_intro      (home page, existing behaviour unchanged)
+    if (mode === 'navigation') {
+      sendControlMessage('start_navigation', { mode: 'navigation' });
+    } else {
+      sendControlMessage('start_intro');
+    }
+
     setIntroState('active');
   }, [geminiState, introState, sendControlMessage, startListening]);
 
