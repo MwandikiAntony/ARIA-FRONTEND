@@ -321,12 +321,26 @@ export function useAssistSession() {
   const flipCamera = useCallback(async () => {
     const newFacing = cameraFacing === 'environment' ? 'user' : 'environment';
     setCameraFacing(newFacing);
-    // Stop current capture and restart with new facing
+    // Stop existing stream, then open new one with correct facingMode
     stopCapture();
-    setTimeout(async () => {
+    await new Promise<void>((r) => setTimeout(r, 200));
+    // startCapture hardcodes 'environment', so we manually set srcObject
+    // for the flip case using the updated facing mode
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: newFacing, width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false,
+      });
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play().catch(() => {});
+      }
       await startCapture();
-    }, 300);
-  }, [cameraFacing, startCapture, stopCapture]);
+    } catch {
+      // Fallback — just restart with default
+      await startCapture();
+    }
+  }, [cameraFacing, startCapture, stopCapture, videoRef]);
 
   const takeScreenshot = useCallback(() => {
     const video = videoRef.current;

@@ -2,10 +2,13 @@
 
 /**
  * src/components/assist/AssistVideoFeed.tsx
- * Live camera feed with front/back flip, screenshot, overlays.
+ *
+ * Displays the camera feed from videoRef (owned by useMediaCapture).
+ * Does NOT call getUserMedia — that is handled by useMediaCapture.
+ * This component only renders the <video> element and overlay controls.
  */
 
-import React, { useEffect, useRef } from 'react';
+import React from 'react';
 import type { AssistSessionPhase } from '@/hooks/useAssistSession';
 
 interface AssistVideoFeedProps {
@@ -39,118 +42,106 @@ export const AssistVideoFeed: React.FC<AssistVideoFeedProps> = ({
   onDownloadScreenshot,
   onDismissScreenshot,
 }) => {
-  const streamRef = useRef<MediaStream | null>(null);
-
-  // Start camera stream on this component's video element
-  useEffect(() => {
-    if (!isCameraOn || phase === 'ended') return;
-    const constraints: MediaStreamConstraints = {
-      video: {
-        facingMode: cameraFacing,
-        width: { ideal: 1280 },
-        height: { ideal: 720 },
-      },
-    };
-
-    navigator.mediaDevices?.getUserMedia(constraints)
-      .then((stream) => {
-        streamRef.current = stream;
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          videoRef.current.play().catch(() => {});
-        }
-      })
-      .catch((err) => console.warn('[ASSIST] Camera error:', err));
-
-    return () => {
-      streamRef.current?.getTracks().forEach((t) => t.stop());
-      streamRef.current = null;
-    };
-  }, [isCameraOn, cameraFacing, phase, videoRef]);
-
-  const isActive = phase === 'idle' || phase === 'active' || phase === 'paused';
+  // Show controls whenever session is running (not idle/ended)
+  const sessionOn = phase === 'listening' || phase === 'active' || phase === 'paused';
 
   return (
-    <div className="relative w-full rounded-2xl overflow-hidden" style={{ background: '#0a0f0a' }}>
-      {/* Aspect ratio container */}
+    <div
+      className="relative w-full rounded-2xl overflow-hidden"
+      style={{ background: '#080d08' }}
+    >
+      {/* 16:9 aspect ratio wrapper */}
       <div className="relative w-full" style={{ paddingBottom: '56.25%' }}>
 
-        {/* Video element */}
+        {/* ── Live video — always rendered, opacity controls visibility ── */}
         <video
           ref={videoRef}
           autoPlay
           playsInline
           muted
-          className="absolute inset-0 w-full h-full object-cover transition-opacity duration-300"
+          className="absolute inset-0 w-full h-full object-cover"
           style={{
             transform: cameraFacing === 'user' ? 'scaleX(-1)' : 'none',
-            opacity: isCameraOn && isActive ? 1 : 0,
+            opacity: isCameraOn && sessionOn ? 1 : 0,
+            transition: 'opacity 0.3s',
           }}
         />
 
-        {/* Camera off placeholder */}
-        {(!isCameraOn || !isActive) && (
+        {/* ── Camera off / not started placeholder ── */}
+        {(!isCameraOn || !sessionOn) && (
           <div
-            className="absolute inset-0 flex flex-col items-center justify-center gap-3"
-            style={{ background: 'linear-gradient(135deg, #0a0f0a 0%, #0f1f14 100%)' }}
+            className="absolute inset-0 flex flex-col items-center justify-center gap-2"
+            style={{
+              background: 'linear-gradient(135deg, #080d08 0%, #0c1a0f 100%)',
+            }}
           >
-            {/* Grid pattern */}
+            {/* Subtle grid */}
             <div
-              className="absolute inset-0 opacity-10"
+              className="absolute inset-0"
               style={{
-                backgroundImage: 'linear-gradient(rgba(52,211,153,0.3) 1px, transparent 1px), linear-gradient(90deg, rgba(52,211,153,0.3) 1px, transparent 1px)',
-                backgroundSize: '40px 40px',
+                backgroundImage: 'linear-gradient(rgba(52,211,153,0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(52,211,153,0.06) 1px, transparent 1px)',
+                backgroundSize: '48px 48px',
               }}
             />
             <div className="relative z-10 text-center">
               <div
                 className="w-16 h-16 rounded-2xl flex items-center justify-center mb-3 mx-auto"
                 style={{
-                  background: 'rgba(52,211,153,0.1)',
-                  border: '1px solid rgba(52,211,153,0.2)',
+                  background: 'rgba(52,211,153,0.08)',
+                  border: '1px solid rgba(52,211,153,0.15)',
                 }}
               >
                 <span className="text-3xl">
-                  {phase === 'idle' ? '📷' : isCameraOn ? '📷' : '🚫'}
+                  {!isCameraOn ? '🚫' : '📷'}
                 </span>
               </div>
-              <p className="text-sm font-medium" style={{ color: '#34d399' }}>
-                {phase === 'idle' ? 'Camera ready' : 'Camera off'}
+              <p className="text-sm font-medium" style={{ color: 'rgba(52,211,153,0.7)' }}>
+                {!sessionOn ? 'Waiting for ARIA…' : 'Camera off'}
               </p>
-              <p className="text-xs text-white/30 mt-1">
-                {phase === 'idle'
-                  ? 'Point at your task to begin'
-                  : 'Toggle camera to resume feed'}
-              </p>
+              {sessionOn && !isCameraOn && (
+                <button
+                  onClick={onToggleCamera}
+                  className="mt-3 px-4 py-1.5 rounded-full text-xs font-medium transition-all hover:brightness-110"
+                  style={{
+                    background: 'rgba(52,211,153,0.15)',
+                    border: '1px solid rgba(52,211,153,0.25)',
+                    color: '#34d399',
+                  }}
+                >
+                  Turn camera on
+                </button>
+              )}
             </div>
           </div>
         )}
 
-        {/* Dark scrim for readability */}
-        {isCameraOn && isActive && (
+        {/* ── Gradient scrim for overlay readability ── */}
+        {isCameraOn && sessionOn && (
           <div
             className="absolute inset-0 pointer-events-none"
-            style={{ background: 'linear-gradient(to bottom, rgba(0,0,0,0.3) 0%, transparent 30%, transparent 70%, rgba(0,0,0,0.5) 100%)' }}
-          />
-        )}
-
-        {/* Speaking pulse ring */}
-        {isSpeaking && isActive && (
-          <div
-            className="absolute inset-0 pointer-events-none rounded-2xl"
             style={{
-              boxShadow: 'inset 0 0 0 2px rgba(52,211,153,0.5)',
-              animation: 'pulse 1s ease-in-out infinite',
+              background: 'linear-gradient(to bottom, rgba(0,0,0,0.28) 0%, transparent 25%, transparent 65%, rgba(0,0,0,0.55) 100%)',
             }}
           />
         )}
 
-        {/* Task title overlay */}
-        {taskTitle && isActive && (
+        {/* ── ARIA speaking ring ── */}
+        {isSpeaking && sessionOn && (
           <div
-            className="absolute top-3 left-3 px-3 py-1.5 rounded-lg"
+            className="absolute inset-0 pointer-events-none rounded-2xl"
             style={{
-              background: 'rgba(0,0,0,0.6)',
+              boxShadow: 'inset 0 0 0 2px rgba(52,211,153,0.45)',
+              animation: 'pulse 1.2s ease-in-out infinite',
+            }}
+          />
+        )}
+
+        {/* ── Task title (top-left) ── */}
+        {taskTitle && sessionOn && (
+          <div
+            className="absolute top-3 left-3 px-2.5 py-1.5 rounded-lg"
+            style={{
+              background: 'rgba(0,0,0,0.55)',
               backdropFilter: 'blur(8px)',
               border: '1px solid rgba(52,211,153,0.2)',
             }}
@@ -161,88 +152,85 @@ export const AssistVideoFeed: React.FC<AssistVideoFeedProps> = ({
           </div>
         )}
 
-        {/* AI speaking indicator */}
-        {isSpeaking && isActive && (
+        {/* ── ARIA speaking badge (top-right) ── */}
+        {isSpeaking && sessionOn && (
           <div
             className="absolute top-3 right-3 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg"
             style={{
-              background: 'rgba(0,0,0,0.65)',
+              background: 'rgba(0,0,0,0.6)',
               backdropFilter: 'blur(8px)',
-              border: '1px solid rgba(52,211,153,0.3)',
+              border: '1px solid rgba(52,211,153,0.25)',
             }}
           >
             <span
               className="w-1.5 h-1.5 rounded-full"
               style={{ background: '#34d399', animation: 'pulse 1s infinite' }}
             />
-            <span className="text-[11px] font-medium" style={{ color: '#34d399' }}>
-              ARIA
-            </span>
+            <span className="text-[11px] font-medium" style={{ color: '#34d399' }}>ARIA</span>
           </div>
         )}
 
-        {/* Controls overlay — bottom */}
-        {isActive && (
-          <div
-            className="absolute bottom-3 right-3 flex items-center gap-2"
-          >
-            {/* Screenshot */}
-            <button
-              onClick={onTakeScreenshot}
-              className="w-8 h-8 rounded-full flex items-center justify-center transition-all hover:scale-110"
-              style={{
-                background: 'rgba(0,0,0,0.6)',
-                backdropFilter: 'blur(8px)',
-                border: '1px solid rgba(255,255,255,0.15)',
-              }}
-              title="Take screenshot"
-            >
-              <span className="text-sm">📸</span>
-            </button>
+        {/* ── Camera controls (bottom-right) — always shown when session on ── */}
+        {sessionOn && (
+          <div className="absolute bottom-3 right-3 flex items-center gap-2">
 
-            {/* Flip camera */}
-            {hasMultipleCameras && (
+            {/* Screenshot */}
+            {isCameraOn && (
               <button
-                onClick={onFlipCamera}
-                className="w-8 h-8 rounded-full flex items-center justify-center transition-all hover:scale-110"
+                onClick={onTakeScreenshot}
+                className="w-9 h-9 rounded-full flex items-center justify-center transition-all hover:scale-110 active:scale-95"
                 style={{
                   background: 'rgba(0,0,0,0.6)',
-                  backdropFilter: 'blur(8px)',
-                  border: '1px solid rgba(255,255,255,0.15)',
+                  backdropFilter: 'blur(10px)',
+                  border: '1px solid rgba(255,255,255,0.18)',
                 }}
-                title="Flip camera"
+                title="Screenshot"
               >
-                <span className="text-sm">🔄</span>
+                <span className="text-base">📸</span>
               </button>
             )}
 
-            {/* Toggle camera */}
+            {/* Flip camera */}
+            {hasMultipleCameras && isCameraOn && (
+              <button
+                onClick={onFlipCamera}
+                className="w-9 h-9 rounded-full flex items-center justify-center transition-all hover:scale-110 active:scale-95"
+                style={{
+                  background: 'rgba(0,0,0,0.6)',
+                  backdropFilter: 'blur(10px)',
+                  border: '1px solid rgba(255,255,255,0.18)',
+                }}
+                title="Flip camera"
+              >
+                <span className="text-base">🔄</span>
+              </button>
+            )}
+
+            {/* Camera toggle — always visible */}
             <button
               onClick={onToggleCamera}
-              className="w-8 h-8 rounded-full flex items-center justify-center transition-all hover:scale-110"
+              className="w-9 h-9 rounded-full flex items-center justify-center transition-all hover:scale-110 active:scale-95"
               style={{
-                background: isCameraOn ? 'rgba(0,0,0,0.6)' : 'rgba(239,68,68,0.3)',
-                backdropFilter: 'blur(8px)',
-                border: `1px solid ${isCameraOn ? 'rgba(255,255,255,0.15)' : 'rgba(239,68,68,0.4)'}`,
+                background: isCameraOn ? 'rgba(0,0,0,0.6)' : 'rgba(239,68,68,0.35)',
+                backdropFilter: 'blur(10px)',
+                border: `1px solid ${isCameraOn ? 'rgba(255,255,255,0.18)' : 'rgba(239,68,68,0.5)'}`,
               }}
               title={isCameraOn ? 'Turn off camera' : 'Turn on camera'}
             >
-              <span className="text-sm">{isCameraOn ? '📷' : '🚫'}</span>
+              <span className="text-base">{isCameraOn ? '📷' : '🚫'}</span>
             </button>
           </div>
         )}
 
-        {/* Camera facing badge */}
-        {isActive && isCameraOn && (
-          <div
-            className="absolute bottom-3 left-3"
-          >
+        {/* ── Camera facing badge (bottom-left) ── */}
+        {sessionOn && isCameraOn && (
+          <div className="absolute bottom-3 left-3">
             <span
               className="text-[10px] font-mono uppercase tracking-wider px-2 py-1 rounded"
               style={{
-                background: 'rgba(0,0,0,0.5)',
+                background: 'rgba(0,0,0,0.45)',
                 color: 'rgba(255,255,255,0.4)',
-                border: '1px solid rgba(255,255,255,0.08)',
+                border: '1px solid rgba(255,255,255,0.07)',
               }}
             >
               {cameraFacing === 'environment' ? '↩ BACK' : '↪ FRONT'}
@@ -250,39 +238,39 @@ export const AssistVideoFeed: React.FC<AssistVideoFeedProps> = ({
           </div>
         )}
 
-        {/* Paused overlay */}
+        {/* ── Paused overlay ── */}
         {phase === 'paused' && (
           <div
             className="absolute inset-0 flex items-center justify-center"
-            style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
+            style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)' }}
           >
             <div className="text-center">
               <div className="text-4xl mb-2">⏸</div>
-              <p className="text-sm font-medium text-white/70">Paused</p>
+              <p className="text-sm font-medium text-white/60">Paused</p>
             </div>
           </div>
         )}
       </div>
 
-      {/* Screenshot preview */}
+      {/* ── Screenshot preview overlay ── */}
       {screenshotDataUrl && (
         <div
           className="absolute inset-0 flex flex-col items-center justify-center z-20"
-          style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)' }}
+          style={{ background: 'rgba(0,0,0,0.88)', backdropFilter: 'blur(10px)' }}
         >
           <img
             src={screenshotDataUrl}
             alt="Screenshot"
-            className="max-w-full max-h-full rounded-lg object-contain"
-            style={{ maxHeight: '70%' }}
+            className="max-w-full rounded-xl object-contain"
+            style={{ maxHeight: '68%' }}
           />
           <div className="flex gap-3 mt-4">
             <button
               onClick={onDownloadScreenshot}
-              className="px-4 py-2 rounded-lg text-sm font-medium transition-all hover:brightness-110"
+              className="px-4 py-2 rounded-xl text-sm font-medium transition-all hover:brightness-110"
               style={{
-                background: 'rgba(52,211,153,0.2)',
-                border: '1px solid rgba(52,211,153,0.35)',
+                background: 'rgba(52,211,153,0.18)',
+                border: '1px solid rgba(52,211,153,0.3)',
                 color: '#34d399',
               }}
             >
@@ -290,10 +278,10 @@ export const AssistVideoFeed: React.FC<AssistVideoFeedProps> = ({
             </button>
             <button
               onClick={onDismissScreenshot}
-              className="px-4 py-2 rounded-lg text-sm font-medium text-white/50 transition-all hover:text-white/80"
+              className="px-4 py-2 rounded-xl text-sm font-medium text-white/45 transition-all hover:text-white/75"
               style={{
-                background: 'rgba(255,255,255,0.06)',
-                border: '1px solid rgba(255,255,255,0.1)',
+                background: 'rgba(255,255,255,0.05)',
+                border: '1px solid rgba(255,255,255,0.09)',
               }}
             >
               Dismiss
