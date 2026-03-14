@@ -1,14 +1,30 @@
 import React from 'react';
-import { RouteStep } from '@/types';
 
-const steps: RouteStep[] = [
-  { id: '1', instruction: 'Head north on Market St', distance: 0, icon: '▲', isCurrent: true },
-  { id: '2', instruction: 'Turn right on 5th Ave', distance: 120, icon: '↱' },
-  { id: '3', instruction: 'Continue to Mission St', distance: 340, icon: '▲' },
-  { id: '4', instruction: 'Arrive: 101 Mission St', distance: 460, icon: '⬛' },
-];
+export interface RouteStep {
+  id: string;
+  instruction: string;
+  distance: number;
+  icon: string;
+  isCurrent?: boolean;
+}
 
-export const RouteSteps: React.FC = () => {
+interface RouteStepsProps {
+  steps?: RouteStep[];
+}
+
+export const RouteSteps: React.FC<RouteStepsProps> = ({ steps = [] }) => {
+  if (steps.length === 0) {
+    return (
+      <div className="bg-bg-surface border border-border rounded-md p-4 flex flex-col items-center justify-center gap-2 min-h-[80px]">
+        <span className="font-mono text-[10px] text-text-muted text-center">
+          No active route.
+          <br />
+          Tell ARIA where you want to go.
+        </span>
+      </div>
+    );
+  }
+
   return (
     <div className="bg-bg-surface border border-border rounded-md p-4">
       {steps.map((step) => (
@@ -27,7 +43,7 @@ export const RouteSteps: React.FC = () => {
               {step.distance === 0
                 ? 'Now · 0m remaining'
                 : step.distance >= 400
-                ? `~6 min · ${step.distance}m total`
+                ? `~${Math.ceil(step.distance / 80)} min · ${step.distance}m total`
                 : `${step.distance}m ahead`}
             </div>
           </div>
@@ -35,4 +51,4 @@ export const RouteSteps: React.FC = () => {
       ))}
     </div>
   );
-}; 
+};

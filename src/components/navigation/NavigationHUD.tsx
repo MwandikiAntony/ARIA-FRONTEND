@@ -2,7 +2,6 @@
 
 import React from 'react';
 import { HUDPanel } from './HUDPanel';
-import { AgentStateIndicator } from './AgentStateIndicator';
 import { GPSWidget } from './GPSWidget';
 import { DetectionLog } from './DetectionLog';
 import { CameraFeed } from './CameraFeed';
@@ -11,12 +10,9 @@ import { RouteSteps } from './RouteSteps';
 import { HapticPatterns } from './HapticPatterns';
 import { QuickSOS } from './QuickSOS';
 import { Tag } from '@/components/ui/Tag';
-import { Button } from '@/components/ui/Button';
 import type { AgentState } from '@/hooks/useAgentState';
 import type { Environment } from '@/hooks/useGeolocation';
 import type { DetectionResult } from '@/hooks/useNavigationSession';
-
-// ── Props ─────────────────────────────────────────────────────────────────────
 
 interface NavigationHUDProps {
   agentState: AgentState;
@@ -29,22 +25,9 @@ interface NavigationHUDProps {
   detections: DetectionResult[];
   environment: Environment;
   gpsAccuracy: number | null;
-  onMute: () => void;
-  onUnmute: () => void;
-  onStop: () => void;
+  position: GeolocationCoordinates | null;
   sessionId: string | null;
 }
-
-// AgentState string → 0-based index for AgentStateIndicator
-const STATE_INDEX: Record<AgentState, number> = {
-  LISTENING:  0,
-  OBSERVING:  1,
-  EVALUATING: 2,
-  COACHING:   3,
-  SILENT:     4,
-};
-
-// ── Component ─────────────────────────────────────────────────────────────────
 
 export const NavigationHUD: React.FC<NavigationHUDProps> = ({
   agentState,
@@ -57,22 +40,22 @@ export const NavigationHUD: React.FC<NavigationHUDProps> = ({
   detections,
   environment,
   gpsAccuracy,
-  onMute,
-  onUnmute,
-  onStop,
+  position,
   sessionId,
 }) => {
-  const stateIndex = STATE_INDEX[agentState] ?? 0;
-
-  const envTag   = environment === 'indoor'  ? '● INDOOR MODE'
-                 : environment === 'outdoor' ? '● OUTDOOR MODE'
-                 : '● DETECTING ENV…';
-  const envColor = environment === 'indoor' ? 'amber' : 'cyan';
   const gpsLocked = gpsAccuracy !== null && gpsAccuracy <= 20;
+  const envColor = environment === 'indoor' ? 'amber' : 'cyan';
+  const envTag =
+    environment === 'indoor'  ? '● INDOOR MODE'  :
+    environment === 'outdoor' ? '● OUTDOOR MODE' :
+    '● DETECTING ENV…';
+
+  const latLng = position
+    ? `${position.latitude.toFixed(5)}, ${position.longitude.toFixed(5)}`
+    : null;
 
   return (
     <section className="bg-bg-deep border-t border-border px-4 md:px-8 py-12 md:py-16">
-      {/* Header */}
       <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-8 md:mb-10">
         <div>
           <div className="section-label">Navigation Mode</div>
@@ -83,31 +66,49 @@ export const NavigationHUD: React.FC<NavigationHUDProps> = ({
         <div className="flex flex-wrap gap-2.5 items-center">
           <Tag color={envColor}>{envTag}</Tag>
           {gpsLocked && <Tag color="green">GPS LOCKED</Tag>}
-          <Button variant="ghost" className="!px-4 !py-2 !text-xs" onClick={onStop}>
-            ⚙ End Session
-          </Button>
         </div>
       </div>
 
-      {/* 3-column grid — identical layout to original */}
       <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr_280px] gap-4 lg:gap-5">
 
-        {/* Left Panel */}
         <div className="flex flex-col gap-4">
-          <HUDPanel title="// Agent State">
-            <AgentStateIndicator currentState={stateIndex} />
+          <HUDPanel title="Current Location">
+            {position ? (
+              <div className="flex flex-col gap-3">
+                <div className="w-full h-36 rounded-lg overflow-hidden border border-border bg-bg-surface relative">
+                  <iframe
+                    title="Current Location Map"
+                    width="100%"
+                    height="100%"
+                    frameBorder="0"
+                    src={`https://maps.google.com/maps?q=${position.latitude},${position.longitude}&z=16&output=embed`}
+                    className="w-full h-full"
+                  />
+                  <div className="absolute top-1.5 left-1.5 bg-black/70 rounded px-1.5 py-0.5 font-mono text-[9px] text-cyan">
+                    LIVE
+                  </div>
+                </div>
+                <div className="font-mono text-[10px] text-text-muted break-all">{latLng}</div>
+                <GPSWidget environment={environment} accuracy={gpsAccuracy} />
+              </div>
+            ) : (
+              <div className="flex flex-col gap-3">
+                <div className="w-full h-36 rounded-lg border border-border bg-bg-surface flex items-center justify-center">
+                  <div className="flex flex-col items-center gap-2">
+                    <div className="w-4 h-4 rounded-full border-2 border-cyan/30 border-t-cyan animate-spin" />
+                    <span className="font-mono text-[10px] text-text-muted">Acquiring GPS…</span>
+                  </div>
+                </div>
+                <GPSWidget environment={environment} accuracy={gpsAccuracy} />
+              </div>
+            )}
           </HUDPanel>
 
-          <HUDPanel title="// GPS Signal">
-            <GPSWidget environment={environment} accuracy={gpsAccuracy} />
-          </HUDPanel>
-
-          <HUDPanel title="// Object Detection">
+          <HUDPanel title="Object Detection">
             <DetectionLog detections={detections} />
           </HUDPanel>
         </div>
 
-        {/* Center Panel */}
         <div className="flex flex-col gap-4">
           <CameraFeed
             videoRef={videoRef}
@@ -117,20 +118,20 @@ export const NavigationHUD: React.FC<NavigationHUDProps> = ({
           <ARIAVoiceCard isSpeaking={isSpeaking} transcript={transcript} />
         </div>
 
-        {/* Right Panel */}
         <div className="flex flex-col gap-4">
-          <HUDPanel title="// Active Route">
+          <HUDPanel title="Active Route">
             <RouteSteps />
           </HUDPanel>
 
-          <HUDPanel title="// Haptic Feedback">
+          <HUDPanel title="Haptic Feedback">
             <HapticPatterns agentState={agentState} urgencyScore={urgencyScore} />
           </HUDPanel>
 
-          <HUDPanel title="// Emergency" className="border-red/30">
+          <HUDPanel title="Emergency" className="border-red/30">
             <QuickSOS sessionId={sessionId} />
           </HUDPanel>
         </div>
+
       </div>
     </section>
   );

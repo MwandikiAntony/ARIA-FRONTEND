@@ -7,15 +7,17 @@ interface GPSWidgetProps {
 }
 
 export const GPSWidget: React.FC<GPSWidgetProps> = ({ environment, accuracy }) => {
-  const isLocked      = accuracy !== null && accuracy <= 20;
+  const isLocked = accuracy !== null && accuracy <= 20;
   const accuracyLabel = accuracy !== null ? `±${Math.round(accuracy)}m accuracy` : 'Acquiring…';
 
-  const envTagClass = environment === 'indoor'  ? 'tag-amber'
-                    : environment === 'outdoor' ? 'tag-green'
-                    : 'tag-cyan';
-  const envLabel    = environment === 'indoor'  ? 'INDOOR'
-                    : environment === 'outdoor' ? 'OUTDOOR'
-                    : 'DETECTING…';
+  const envTagClass =
+    environment === 'indoor'  ? 'tag-amber' :
+    environment === 'outdoor' ? 'tag-green' :
+    'tag-cyan';
+  const envLabel =
+    environment === 'indoor'  ? 'INDOOR'  :
+    environment === 'outdoor' ? 'OUTDOOR' :
+    'DETECTING…';
 
   return (
     <>
@@ -42,7 +44,6 @@ export const GPSWidget: React.FC<GPSWidgetProps> = ({ environment, accuracy }) =
 
       <div className="flex gap-2 mt-1">
         <span className={`tag ${envTagClass} !text-[9px]`}>{envLabel}</span>
-        <span className="tag tag-cyan !text-[9px]">AUTO-DETECT</span>
       </div>
     </>
   );

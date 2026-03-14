@@ -1,20 +1,8 @@
-/**
- * useNavigationSession.ts — REWRITTEN (clean, no ts-ignore, no conditional hooks)
- *
- * Uses aria.sendBinary  → video frames (useMediaCapture)
- * Uses aria.sendText    → GPS JSON, set_mode JSON
- * Uses aria.subscribeToMessages → detection/agent_state/environment_update
- *
- * No wsRef sharing. No conditional hook calls.
- */
-
 import { useState, useEffect, useRef, useCallback, type RefObject } from 'react'
 import { useAriaIntro, type IntroState } from './useAriaIntro'
 import { useMediaCapture } from './useMediaCapture'
 import { useGeolocation, type Environment } from './useGeolocation'
 import { useAgentState, type AgentState } from './useAgentState'
-
-// ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface DetectionResult {
   label: string
@@ -32,6 +20,10 @@ export interface UseNavigationSessionReturn {
   stop: () => void
   mute: () => void
   unmute: () => void
+  pause: () => void
+  resume: () => void
+  enableVoice: () => void
+  disableVoice: () => void
   isSpeaking: boolean
   isListening: boolean
   transcript: string
@@ -41,6 +33,7 @@ export interface UseNavigationSessionReturn {
   stopCapture: () => void
   cameraError: string | null
   environment: Environment
+  position: GeolocationCoordinates | null
   accuracy: number | null
   gpsError: string | null
   isTrackingGPS: boolean
@@ -50,26 +43,31 @@ export interface UseNavigationSessionReturn {
   isConnected: boolean
 }
 
-// ── Hook ──────────────────────────────────────────────────────────────────────
-
 export function useNavigationSession(): UseNavigationSessionReturn {
 
-  const [detections, setDetections]       = useState<DetectionResult[]>([])
+  const [detections, setDetections] = useState<DetectionResult[]>([])
   const [lastWsMessage, setLastWsMessage] = useState<any>(null)
   const modeSentRef = useRef(false)
+  const navGreetingRef = useRef(false)
 
-  // ── 1. Voice + WS session ─────────────────────────────────────────────────
   const aria = useAriaIntro()
 
-  // ── 2. Send set_mode: navigation once WS connects ─────────────────────────
   useEffect(() => {
     if (aria.geminiState !== 'ready' || modeSentRef.current) return
     aria.sendText(JSON.stringify({ type: 'set_mode', mode: 'navigation' }))
     modeSentRef.current = true
-    console.log('[NAV-SESSION] set_mode: navigation → backend')
   }, [aria.geminiState]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── 3. Subscribe to nav-specific WS messages ──────────────────────────────
+  useEffect(() => {
+    if (aria.introState !== 'active' || navGreetingRef.current) return
+    navGreetingRef.current = true
+    aria.sendText(JSON.stringify({
+      type: 'control',
+      action: 'start_navigation',
+      mode: 'navigation',
+    }))
+  }, [aria.introState]) // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     const unsubscribe = aria.subscribeToMessages((msg: any) => {
       if (!msg?.type) return
@@ -89,7 +87,6 @@ export function useNavigationSession(): UseNavigationSessionReturn {
     return unsubscribe
   }, [aria.subscribeToMessages])
 
-  // ── 4. Camera capture ─────────────────────────────────────────────────────
   const isSessionActive = aria.introState === 'active' || aria.introState === 'muted'
 
   const {
@@ -99,14 +96,13 @@ export function useNavigationSession(): UseNavigationSessionReturn {
     stopCapture,
     error: cameraError,
   } = useMediaCapture({
-    sendFrame: aria.sendBinary,   // ← directly uses the live WS socket
+    sendFrame: aria.sendBinary,
     enabled: isSessionActive,
     fps: 1,
     quality: 0.7,
     maxDimension: 768,
   })
 
-  // Auto-start/stop camera with session
   useEffect(() => {
     if (isSessionActive && !isCapturing) {
       startCapture().catch(console.error)
@@ -116,12 +112,12 @@ export function useNavigationSession(): UseNavigationSessionReturn {
     }
   }, [isSessionActive]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── 5. GPS tracking ───────────────────────────────────────────────────────
   const gpsTextSender = useCallback((msg: object) => {
     aria.sendText(JSON.stringify(msg))
   }, [aria.sendText])
 
   const {
+    position,
     environment,
     accuracy,
     error: gpsError,
@@ -133,7 +129,6 @@ export function useNavigationSession(): UseNavigationSessionReturn {
     maxIntervalMs: 10_000,
   })
 
-  // ── 6. Agent state ────────────────────────────────────────────────────────
   const { currentState: agentState, urgencyScore } = useAgentState({
     wsMessage: lastWsMessage,
     isSpeaking: aria.isSpeaking,
@@ -147,6 +142,10 @@ export function useNavigationSession(): UseNavigationSessionReturn {
     stop: aria.stop,
     mute: aria.mute,
     unmute: aria.unmute,
+    pause: aria.pause,
+    resume: aria.resume,
+    enableVoice: aria.enableVoice,
+    disableVoice: aria.disableVoice,
     isSpeaking: aria.isSpeaking,
     isListening: aria.isListening,
     transcript: aria.transcript,
@@ -156,13 +155,14 @@ export function useNavigationSession(): UseNavigationSessionReturn {
     stopCapture,
     cameraError,
     environment,
+    position,
     accuracy,
     gpsError,
     isTrackingGPS,
     detections,
     agentState,
     urgencyScore,
-    isConnected: aria.geminiState === 'ready'    ||
+    isConnected: aria.geminiState === 'ready' ||
                  aria.geminiState === 'speaking' ||
                  aria.geminiState === 'listening',
   }

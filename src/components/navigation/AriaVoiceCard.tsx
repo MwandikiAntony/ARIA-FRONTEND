@@ -2,11 +2,6 @@ import React from 'react';
 import { Waveform } from '@/components/ui/Waveform';
 import { Tag } from '@/components/ui/Tag';
 
-// CHANGED: added isSpeaking and transcript props.
-// When isSpeaking=false: shows LISTENING tag + pulse dot instead of Waveform.
-// When transcript is empty: shows idle fallback message.
-// All styling, layout, classNames are identical to the original.
-
 interface ARIAVoiceCardProps {
   isSpeaking: boolean;
   transcript: string;
@@ -14,9 +9,7 @@ interface ARIAVoiceCardProps {
 
 export const ARIAVoiceCard: React.FC<ARIAVoiceCardProps> = ({ isSpeaking, transcript }) => {
   const displayText = transcript?.trim() ||
-    (isSpeaking
-      ? '…'
-      : 'Listening for voice input and camera context…');
+    (isSpeaking ? '…' : 'Listening for voice input and camera context…');
 
   return (
     <div className="bg-gradient-to-br from-cyan/6 to-transparent border border-cyan/20 rounded-md p-4">
