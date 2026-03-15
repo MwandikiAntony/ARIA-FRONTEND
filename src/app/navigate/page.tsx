@@ -1,6 +1,26 @@
 'use client';
 
-import React, { Suspense, useEffect, useRef } from 'react';
+/**
+ * src/app/navigate/page.tsx
+ *
+ * CHANGES vs previous version:
+ *
+ * 1. REAR CAMERA IS DEFAULT
+ *    cameraFacing state starts as 'environment'. Passed to useNavigationSession
+ *    which forwards it to useMediaCapture — rear camera opens on session start.
+ *
+ * 2. CAMERA FLIP WIRED UP
+ *    handleFlipCamera toggles cameraFacing between 'environment' and 'user'.
+ *    useNavigationSession receives the updated facingMode and useMediaCapture
+ *    restarts the stream with the new camera automatically.
+ *
+ * 3. hasMultipleCameras PASSED THROUGH
+ *    Comes from useNavigationSession → useMediaCapture. NavigationHUD passes it
+ *    to CameraFeed which uses it to show/hide the flip button. Single-camera
+ *    devices (laptops, basic phones) never see the button.
+ */
+
+import React, { Suspense, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useNavigationSession } from '@/hooks/useNavigationSession';
 import { NavigationHUD } from '@/components/navigation/NavigationHUD';
@@ -15,7 +35,14 @@ export default function NavigatePage() {
 }
 
 function NavigateContent() {
-  const nav = useNavigationSession();
+  // Rear camera by default — navigation points at the world
+  const [cameraFacing, setCameraFacing] = useState<'environment' | 'user'>('environment');
+
+  const handleFlipCamera = () => {
+    setCameraFacing(prev => prev === 'environment' ? 'user' : 'environment');
+  };
+
+  const nav = useNavigationSession({ facingMode: cameraFacing });
   const router = useRouter();
   const activateFired = useRef(false);
 
@@ -72,7 +99,6 @@ function NavigateContent() {
 
   return (
     <>
-      {/* Navigation-specific floating bar — reads from nav session, no new session */}
       <NavigationAgentBar
         introState={nav.introState}
         isSpeaking={nav.isSpeaking}
@@ -92,7 +118,6 @@ function NavigateContent() {
         destination={nav.destination}
       />
 
-      {/* Spacer: NavigationAgentBar is fixed at top-16 (~44px tall) */}
       <div className="h-11" aria-hidden="true" />
 
       <NavigationHUD
@@ -108,6 +133,9 @@ function NavigateContent() {
         gpsAccuracy={nav.accuracy}
         position={nav.position}
         sessionId={nav.sessionId}
+        cameraFacing={cameraFacing}
+        hasMultipleCameras={nav.hasMultipleCameras ?? false}
+        onFlipCamera={handleFlipCamera}
         route={nav.route}
         currentAddress={nav.currentAddress}
         travelMode={nav.travelMode}
