@@ -3,28 +3,14 @@
  *
  * CHANGES vs previous version:
  *
- * 1. ARIA ACTIVATES ON PAGE OPEN, NOT ON startSession()
- *    WHY: Previously activate('coach') was called inside startSession(), which
- *    only fires when the user clicks "Start Session" after picking a mode.
- *    Logs show the user sat on the page for 26 seconds with zero voice activity.
- *    FIX: activate('coach') is now called automatically when introState becomes
- *    'ready_to_activate' — same pattern as navigate/page.tsx. ARIA greets the
- *    user immediately on page open: "Coach mode ready. Tell me what you are
- *    practising today." startSession() no longer calls activate() at all.
+ * 1. hasMultipleCameras EXPORTED
+ *    WHY: coach/page.tsx needs to pass this to CoachLayout → VideoFeed so the
+ *    flip button is only shown on devices with more than one camera.
+ *    Previously hasMultipleCameras was returned by useMediaCapture but never
+ *    surfaced through this hook, so VideoFeed always showed the flip button
+ *    (including on laptops with only a front camera).
  *
- * 2. update_context REMOVED FROM startSession()
- *    WHY: Logs prove this caused the double voice.
- *    At 6:34:30.483 coach greeting was sent. At 6:34:30.483 update_context also
- *    fired — same millisecond. Gemini received the context update while still
- *    generating the greeting, treated it as a new user turn, and repeated the
- *    entire greeting a second time (Turn 1: 41 responses, Turn 2: 39 responses —
- *    identical speech twice). The update_context is removed entirely.
- *    The coach system prompt addendum already exists in gemini_service.py's
- *    _ARIA_COACH_ADDENDUM — no separate context injection needed.
- *
- * 3. facingMode='user' (front camera default) — unchanged from previous fix
- *
- * Everything else is identical.
+ * Everything else (auto-activate, facingMode, flipCamera, metrics, hints) unchanged.
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -101,6 +87,8 @@ export interface UseCoachSessionReturn {
   // Media
   videoRef: React.RefObject<HTMLVideoElement | null>;
   isCapturing: boolean;
+  /** true when device has > 1 camera — VideoFeed uses this to show/hide flip button */
+  hasMultipleCameras: boolean;
 
   // AI
   isSpeaking: boolean;
@@ -116,7 +104,7 @@ export interface UseCoachSessionReturn {
   toggleMute: () => void;
   toggleCamera: () => void;
   toggleMic: () => void;
-  flipCamera: (facing: 'user' | 'environment') => void;  // NEW
+  flipCamera: (facing: 'user' | 'environment') => void;
   switchToNavigation: () => void;
 }
 
@@ -134,17 +122,14 @@ export function useCoachSession(): UseCoachSessionReturn {
     isMicOn: false,
   });
 
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const eventIdRef = useRef(0);
+  const timerRef    = useRef<ReturnType<typeof setInterval> | null>(null);
+  const eventIdRef  = useRef(0);
 
-  // ── Aria intro (Gemini Live session) ─────────────────────────────────────
   const aria = useAriaIntro();
 
-  // ── Agent state driven by WS messages ────────────────────────────────────
   const [lastWsMessage, setLastWsMessage] = useState<any>(null);
 
-  // ── Camera facing mode state ──────────────────────────────────────────────
-  // Default 'user' (front camera). User can flip via the button in VideoFeed.
+  // Default front camera ('user') — coach faces the camera
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
 
   useEffect(() => {
@@ -162,19 +147,20 @@ export function useCoachSession(): UseCoachSessionReturn {
     isSpeaking: aria.isSpeaking,
   });
 
-  // ── Media capture — front camera for coach (user faces it) ──────────────
-  const { videoRef, isCapturing, startCapture, stopCapture } = useMediaCapture({
+  // Front camera for coach; changes when user presses flip button
+  const {
+    videoRef,
+    isCapturing,
+    startCapture,
+    stopCapture,
+    hasMultipleCameras,   // ← NEW: surfaced so coach/page can pass to VideoFeed
+  } = useMediaCapture({
     sendFrame: aria.sendBinary,
     enabled: session.isCameraOn && session.phase === 'active',
-    facingMode,  // dynamic — changes when user taps flip button
+    facingMode,
   });
 
-  // ── Auto-activate on page open ────────────────────────────────────────────
-  // FIX 1: Activate ARIA as soon as the WS is ready — not waiting for mode select.
-  // WHY: Previously aria.activate('coach') was only called inside startSession()
-  // which fires only when user clicks "Start Session". Logs show 26s of silence
-  // before any voice activity because the user was still on the mode selector.
-  // Now ARIA greets immediately: "Coach mode ready. Tell me what you're practising."
+  // Auto-activate ARIA on page open (not on startSession click)
   const activatedRef = useRef(false);
   useEffect(() => {
     if (aria.introState === 'ready_to_activate' && !activatedRef.current) {
@@ -183,7 +169,6 @@ export function useCoachSession(): UseCoachSessionReturn {
     }
   }, [aria.introState]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Handle WS messages from backend ──────────────────────────────────────
   const handleWsMessage = useCallback((msg: any) => {
     if (!msg?.type) return;
 
@@ -206,19 +191,17 @@ export function useCoachSession(): UseCoachSessionReturn {
       };
       setSession(prev => ({
         ...prev,
-        events: [newEvent, ...prev.events].slice(0, 50), // keep last 50
+        events: [newEvent, ...prev.events].slice(0, 50),
       }));
     }
 
     if (msg.type === 'mode_switch_request') {
-      // Backend is telling us user asked to switch modes
       if (msg.target_mode === 'navigation') {
         switchToNavigation();
       }
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Session timer ─────────────────────────────────────────────────────────
   useEffect(() => {
     if (session.phase === 'active') {
       timerRef.current = setInterval(() => {
@@ -248,23 +231,7 @@ export function useCoachSession(): UseCoachSessionReturn {
 
   const startSession = useCallback(async () => {
     if (!session.mode) return;
-
-    // FIX 1: Do NOT call activate() here anymore.
-    // activate('coach') is now called automatically on page open via the
-    // ready_to_activate useEffect above. By the time the user picks a mode
-    // and clicks Start Session, ARIA is already active and speaking.
-    // Calling activate() again here would create a second session.
-
-    // FIX 2: Do NOT send update_context here.
-    // Logs proved (6:34:30.483) that sending update_context at the same moment
-    // the coach greeting was being generated caused Gemini to repeat the entire
-    // greeting a second time — two identical speeches back-to-back.
-    // The coach system prompt in gemini_service.py (_ARIA_COACH_ADDENDUM) already
-    // contains all coaching constraints. No additional context injection needed.
-
-    // Start front camera
     await startCapture();
-
     setSession(prev => ({
       ...prev,
       phase: 'active',
@@ -293,29 +260,17 @@ export function useCoachSession(): UseCoachSessionReturn {
   }, [aria, stopCapture]);
 
   const toggleMute = useCallback(() => {
-    if (session.isMuted) {
-      aria.unmute();
-    } else {
-      aria.mute();
-    }
+    if (session.isMuted) { aria.unmute(); } else { aria.mute(); }
     setSession(prev => ({ ...prev, isMuted: !prev.isMuted }));
   }, [session.isMuted, aria]);
 
   const toggleCamera = useCallback(() => {
-    if (session.isCameraOn) {
-      stopCapture();
-    } else {
-      startCapture();
-    }
+    if (session.isCameraOn) { stopCapture(); } else { startCapture(); }
     setSession(prev => ({ ...prev, isCameraOn: !prev.isCameraOn }));
   }, [session.isCameraOn, startCapture, stopCapture]);
 
   const toggleMic = useCallback(() => {
-    if (session.isMicOn) {
-      aria.disableVoice();
-    } else {
-      aria.enableVoice();
-    }
+    if (session.isMicOn) { aria.disableVoice(); } else { aria.enableVoice(); }
     setSession(prev => ({ ...prev, isMicOn: !prev.isMicOn }));
   }, [session.isMicOn, aria]);
 
@@ -330,8 +285,7 @@ export function useCoachSession(): UseCoachSessionReturn {
     }
   }, [aria]);
 
-  // FIX: flipCamera — updates facingMode state which triggers useMediaCapture
-  // to restart the stream with the new camera via the facingMode useEffect
+  // Updates facingMode → useMediaCapture restarts stream with new camera
   const flipCamera = useCallback((facing: 'user' | 'environment') => {
     setFacingMode(facing);
   }, []);
@@ -342,6 +296,7 @@ export function useCoachSession(): UseCoachSessionReturn {
     urgencyScore,
     videoRef,
     isCapturing,
+    hasMultipleCameras,   // ← NEW
     isSpeaking: aria.isSpeaking,
     isListening: aria.isListening,
     transcript: aria.transcript,
