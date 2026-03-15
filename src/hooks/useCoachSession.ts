@@ -3,26 +3,26 @@
  *
  * CHANGES vs previous version:
  *
- * 1. startSession() NOW CALLS aria.activate('coach') NOT aria.activate()
- *    WHY: aria.activate() with no argument sends 'start_intro' to the backend,
- *    which creates a session with mode=None and fires the home greeting:
- *    "Hi I am ARIA — I run on three modes: General Assistant, Navigation, Coach..."
- *    Wrong context entirely for the coach page.
- *    FIX: activate('coach') sends 'start_coach' — the backend closes any
- *    existing session, creates a fresh session with mode='coach' and sends
- *    only the coach greeting. Same fix pattern as navigation.
+ * 1. ARIA ACTIVATES ON PAGE OPEN, NOT ON startSession()
+ *    WHY: Previously activate('coach') was called inside startSession(), which
+ *    only fires when the user clicks "Start Session" after picking a mode.
+ *    Logs show the user sat on the page for 26 seconds with zero voice activity.
+ *    FIX: activate('coach') is now called automatically when introState becomes
+ *    'ready_to_activate' — same pattern as navigate/page.tsx. ARIA greets the
+ *    user immediately on page open: "Coach mode ready. Tell me what you are
+ *    practising today." startSession() no longer calls activate() at all.
  *
- * 2. REMOVED: the start_coach_* sendText call inside startSession
- *    WHY: Previously activate() fired start_intro, THEN sendText sent
- *    start_coach_interview on top — two prompts, two voices.
- *    Now start_coach is the ONLY activation message. The sub-mode is
- *    sent as a follow-up update_context after activation — not as a
- *    second session trigger.
+ * 2. update_context REMOVED FROM startSession()
+ *    WHY: Logs prove this caused the double voice.
+ *    At 6:34:30.483 coach greeting was sent. At 6:34:30.483 update_context also
+ *    fired — same millisecond. Gemini received the context update while still
+ *    generating the greeting, treated it as a new user turn, and repeated the
+ *    entire greeting a second time (Turn 1: 41 responses, Turn 2: 39 responses —
+ *    identical speech twice). The update_context is removed entirely.
+ *    The coach system prompt addendum already exists in gemini_service.py's
+ *    _ARIA_COACH_ADDENDUM — no separate context injection needed.
  *
- * 3. useMediaCapture NOW PASSES facingMode='user' (front camera)
- *    WHY: Previously hardcoded facingMode='environment' (rear camera).
- *    Coach page needs the front camera — user faces it for coaching.
- *    Navigation passes 'environment' explicitly.
+ * 3. facingMode='user' (front camera default) — unchanged from previous fix
  *
  * Everything else is identical.
  */
@@ -169,8 +169,19 @@ export function useCoachSession(): UseCoachSessionReturn {
     facingMode,  // dynamic — changes when user taps flip button
   });
 
-  // ── Handle WS messages from backend ──────────────────────────────────────
-  const handleWsMessage = useCallback((msg: any) => {
+  // ── Auto-activate on page open ────────────────────────────────────────────
+  // FIX 1: Activate ARIA as soon as the WS is ready — not waiting for mode select.
+  // WHY: Previously aria.activate('coach') was only called inside startSession()
+  // which fires only when user clicks "Start Session". Logs show 26s of silence
+  // before any voice activity because the user was still on the mode selector.
+  // Now ARIA greets immediately: "Coach mode ready. Tell me what you're practising."
+  const activatedRef = useRef(false);
+  useEffect(() => {
+    if (aria.introState === 'ready_to_activate' && !activatedRef.current) {
+      activatedRef.current = true;
+      aria.activate('coach');
+    }
+  }, [aria.introState]); // eslint-disable-line react-hooks/exhaustive-deps
     if (!msg?.type) return;
 
     if (msg.type === 'coach_metrics') {
@@ -235,28 +246,18 @@ export function useCoachSession(): UseCoachSessionReturn {
   const startSession = useCallback(async () => {
     if (!session.mode) return;
 
-    // FIX: activate('coach') not activate()
-    // activate() → 'start_intro' → home greeting fires on coach page
-    // activate('coach') → 'start_coach' → backend creates fresh coach session,
-    // sends only the coach greeting, no home context bleeds in
-    if (aria.introState !== 'active') {
-      await aria.activate('coach');
-    }
+    // FIX 1: Do NOT call activate() here anymore.
+    // activate('coach') is now called automatically on page open via the
+    // ready_to_activate useEffect above. By the time the user picks a mode
+    // and clicks Start Session, ARIA is already active and speaking.
+    // Calling activate() again here would create a second session.
 
-    // Send sub-mode as a follow-up context update — NOT as a second activation.
-    // WHY: Previously sent start_coach_interview as a separate control message
-    // which the backend treated as a second session trigger. That caused two
-    // voices and double context. Now it's just a context shift on the existing
-    // coach session — ARIA adjusts her persona for the specific coaching type.
-    aria.sendText(JSON.stringify({
-      type: 'control',
-      action: 'update_context',
-      context: {
-        page_focus: 'coach',
-        instruction: `You are now in ${session.mode} coaching mode. ` +
-          COACH_SYSTEM_PROMPTS[session.mode],
-      },
-    }));
+    // FIX 2: Do NOT send update_context here.
+    // Logs proved (6:34:30.483) that sending update_context at the same moment
+    // the coach greeting was being generated caused Gemini to repeat the entire
+    // greeting a second time — two identical speeches back-to-back.
+    // The coach system prompt in gemini_service.py (_ARIA_COACH_ADDENDUM) already
+    // contains all coaching constraints. No additional context injection needed.
 
     // Start front camera
     await startCapture();
@@ -269,7 +270,7 @@ export function useCoachSession(): UseCoachSessionReturn {
       isMicOn: true,
       isCameraOn: true,
     }));
-  }, [session.mode, aria, startCapture]);
+  }, [session.mode, aria.sessionId, startCapture]);
 
   const pauseSession = useCallback(() => {
     aria.pause();
