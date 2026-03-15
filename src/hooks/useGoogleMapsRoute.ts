@@ -268,7 +268,8 @@ export function useGoogleMapsRoute(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         unitSystem: (window as any).google.maps.UnitSystem.METRIC,
       },
-      (result, status) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (result: any, status: any) => {
         setIsLoading(false)
         if (status !== 'OK' || !result) {
           setError(`Could not find route: ${status}`)
