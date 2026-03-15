@@ -46,18 +46,13 @@ export const Navbar: React.FC = () => {
   return (
     <>
       <nav className="fixed top-0 left-0 right-0 h-16 bg-bg-deep/92 backdrop-blur-xl border-b border-border z-50 flex items-center px-4 md:px-8">
-        <Link href="/" className="flex items-center gap-3 mr-auto">
-          <div className="w-9 h-9">
-            <svg viewBox="0 0 36 36" fill="none" className="w-full h-full">
-              <circle cx="18" cy="18" r="16" stroke="#00e5ff" strokeWidth="1.5" strokeDasharray="4 2" opacity="0.5" />
-              <circle cx="18" cy="18" r="10" stroke="#00e5ff" strokeWidth="1.5" />
-              <circle cx="18" cy="18" r="4" fill="#00e5ff" />
-              <line x1="18" y1="2" x2="18" y2="8" stroke="#00e5ff" strokeWidth="1.5" />
-              <line x1="18" y1="28" x2="18" y2="34" stroke="#00e5ff" strokeWidth="1.5" />
-              <line x1="2" y1="18" x2="8" y2="18" stroke="#00e5ff" strokeWidth="1.5" />
-              <line x1="28" y1="18" x2="34" y2="18" stroke="#00e5ff" strokeWidth="1.5" />
-            </svg>
-          </div>
+        <Link href="/" className="flex items-center gap-2 mr-auto">
+          {/* ARIA logo — drop BackgroundEraser_20260315_110957089.png into /public/assets/images/aria-logo.png */}
+          <img
+            src="/assets/images/aria-logo.png"
+            alt="ARIA logo"
+            className="w-10 h-10 object-contain"
+          />
           <span className="font-display text-2xl font-bold tracking-wider text-text-primary">
             AR<span className="text-cyan">I</span>A
           </span>
