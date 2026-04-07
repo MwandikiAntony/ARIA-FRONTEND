@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useState, ReactNode } from 'react';
 
 interface AuthContextType {
-  user: null;
+  user: null | any;
   loading: boolean;
   signInWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
@@ -18,25 +18,19 @@ export const useAuth = (): AuthContextType => {
       user: null,
       loading: false,
       signInWithGoogle: async () => {},
-      logout: async () => {}
+      logout: async () => {},
     };
   }
   return context;
 };
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [user] = useState<null>(null);
+  const [user] = useState<null | any>(null);
   const [loading] = useState<boolean>(false);
 
   const signInWithGoogle = async (): Promise<void> => {
-  try {
-    // integrate Firebase here later
     console.log('Signing in with Google...');
-  } catch (err) {
-    console.error(err);
-    throw err; 
-  }
-};
+  };
 
   const logout = async (): Promise<void> => {
     console.log('Logout disabled - Firebase not configured');
