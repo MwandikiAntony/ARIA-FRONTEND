@@ -10,21 +10,26 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [focused, setFocused] = useState<string | null>(null);
-
+  const router = useRouter();
+  const { signInWithGoogle } = useAuth();
+  
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError('');
-    try {
-      // TODO: integrate with Firebase Auth or your auth provider
-      await new Promise((r) => setTimeout(r, 1200));
-      console.log('Login:', { email, password });
-    } catch {
-      setError('Invalid credentials. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
+  e.preventDefault();
+  setLoading(true);
+  setError('');
+
+  try {
+    // 👉 Replace later with Firebase signInWithEmailAndPassword
+    console.log('Login:', { email, password });
+
+    // ✅ redirect
+    router.push('/dashboard');
+  } catch {
+    setError('Invalid credentials. Please try again.');
+  } finally {
+    setLoading(false);
+  }
+};
 
   const handleGoogle = async () => {
     setLoading(true);
