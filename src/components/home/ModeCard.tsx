@@ -1,3 +1,5 @@
+'use client';
+
 import React from 'react';
 import { Tag } from '@/components/ui/Tag';
 
@@ -8,6 +10,7 @@ interface ModeCardProps {
   tags: string[];
   icon: string;
   isActive: boolean;
+  isLocked?: boolean; 
   onSelect: () => void;
 }
 
@@ -18,6 +21,7 @@ export const ModeCard: React.FC<ModeCardProps> = ({
   tags,
   icon,
   isActive,
+  isLocked = false,
   onSelect,
 }) => {
   const colors =
@@ -54,16 +58,16 @@ export const ModeCard: React.FC<ModeCardProps> = ({
           iconBorder: 'border-emerald-500/25',
           title: 'text-emerald-400',
           gradient: 'from-emerald-500/6',
-          tagColor: 'cyan' as const,   // closest available tag color
+          tagColor: 'cyan' as const,
         };
 
   return (
     <div
-      onClick={onSelect}
+      onClick={isLocked ? undefined : onSelect}
       className={`
         bg-bg-card rounded-2xl p-7 cursor-pointer transition-all duration-500 relative overflow-hidden
         border ${colors.border} hover:-translate-y-1
-        ${isActive ? colors.shadow : ''}
+        ${isActive ? colors.shadow : ''} ${isLocked ? 'opacity-50 pointer-events-none' : ''}
       `}
     >
       <div

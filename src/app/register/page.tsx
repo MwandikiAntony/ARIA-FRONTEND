@@ -63,9 +63,10 @@ export default function RegisterPage() {
 
   try {
     //  Replace this later with Firebase createUserWithEmailAndPassword
+    // createUserWithEmailAndPassword(auth, email, password)
     console.log('Register:', { email, password, fullName, useCase });
 
-    // ✅ redirect after success
+    // redirect after success
     router.push('/dashboard');
   } catch {
     setError('Registration failed. Please try again.');
@@ -81,7 +82,7 @@ export default function RegisterPage() {
   try {
     await signInWithGoogle();
 
-    // ✅ redirect after Google auth
+    //  redirect after Google auth
     router.push('/dashboard');
   } catch {
     setError('Google sign-in failed.');
@@ -281,19 +282,16 @@ export default function RegisterPage() {
                   {([
                     {
                       id: 'navigation' as UseCase,
-                      icon: '🧭',
                       label: 'NAVIGATION',
                       desc: 'Outdoor guidance & obstacle detection',
                     },
                     {
                       id: 'coach' as UseCase,
-                      icon: '🎯',
                       label: 'COACH',
                       desc: 'Communication & performance coaching',
                     },
                     {
                       id: 'both' as UseCase,
-                      icon: '⚡',
                       label: 'BOTH MODES',
                       desc: 'Full platform access',
                     },
@@ -304,7 +302,6 @@ export default function RegisterPage() {
                       className={`use-case-card ${useCase === option.id ? 'use-case-card--selected' : ''}`}
                       onClick={() => setUseCase(option.id)}
                     >
-                      <span className="use-case-icon">{option.icon}</span>
                       <span className="use-case-label">{option.label}</span>
                       <span className="use-case-desc">{option.desc}</span>
                       {useCase === option.id && <div className="use-case-check">✓</div>}

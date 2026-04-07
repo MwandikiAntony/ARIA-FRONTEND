@@ -13,10 +13,12 @@
  */
 
 import React, { useRef, useState, useEffect } from 'react';
-import { Hero }            from '@/components/home/Hero';
+import { Hero } from '@/components/home/Hero';
 import { OnboardingSteps } from '@/components/home/OnboardingSteps';
-import { AriaIntroBar }    from '@/components/home/AriaIntroBar';
-import { ModeSelector }    from '@/components/home/ModeSelector';
+import { AriaIntroBar } from '@/components/home/AriaIntroBar';
+import ModeSelector from '@/components/home/ModeSelector';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/contexts/AuthContext'; // ✅ assumes you have AuthContext
 
 function HomeCameraFeed() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -47,7 +49,6 @@ function HomeCameraFeed() {
     };
   }, []);
 
-  // Don't render anything if camera was denied
   if (hasPermission === false) return null;
 
   return (
@@ -70,7 +71,6 @@ function HomeCameraFeed() {
             <span className="text-[9px] font-mono text-cyan/80 tracking-wider">LIVE</span>
           </div>
 
-          {/* Flip so it looks like a mirror (front cam) */}
           <video
             ref={videoRef}
             autoPlay
@@ -80,7 +80,6 @@ function HomeCameraFeed() {
             style={{ transform: 'scaleX(-1)' }}
           />
 
-          {/* Quick help hint */}
           <div className="absolute bottom-0 left-0 right-0 px-2 py-1.5 bg-gradient-to-t from-black/70 to-transparent">
             <p className="text-[9px] text-white/60 font-mono text-center leading-tight">
               Ask ARIA anything
@@ -93,6 +92,9 @@ function HomeCameraFeed() {
 }
 
 export default function HomePage() {
+  const { user } = useAuth(); // ✅ detect if user is registered
+  const router = useRouter();
+
   return (
     <>
       {/* Fixed ARIA bar — pinned below Navbar */}
@@ -105,7 +107,10 @@ export default function HomePage() {
       <HomeCameraFeed />
 
       <Hero />
-      <ModeSelector />
+
+      {/* ModeSelector with locked logic */}
+      <ModeSelector user={user} router={router} />
+
       <OnboardingSteps />
     </>
   );

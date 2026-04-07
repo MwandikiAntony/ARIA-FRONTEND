@@ -1,18 +1,26 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { ModeCard } from '@/components/home/ModeCard';
+import { type User, useAuth } from '@/contexts/AuthContext'; 
+import { useRouter } from 'next/navigation';
 
-export const ModeSelector: React.FC = () => {
-  const router = useRouter();
+interface ModeSelectorProps {
+  user: User | null;
+  router: ReturnType<typeof useRouter>;
+}
+
+
+export default function ModeSelector({ user, router }: ModeSelectorProps) {
   const [activeMode, setActiveMode] = useState<'nav' | 'coach' | 'assist' | null>(null);
 
   const handleSelect = (mode: 'nav' | 'coach' | 'assist') => {
+    if (!user) return; // prevent selection if not registered
+
     setActiveMode(mode);
     setTimeout(() => {
-      if (mode === 'nav')    router.push('/navigate?autostart=true');
-      if (mode === 'coach')  router.push('/coach');
+      if (mode === 'nav') router.push('/navigate?autostart=true');
+      if (mode === 'coach') router.push('/coach');
       if (mode === 'assist') router.push('/assist');
     }, 300);
   };
@@ -34,6 +42,7 @@ export const ModeSelector: React.FC = () => {
             tags={['Live Camera', 'Voice', 'Any Task', 'Hands-Free']}
             icon="✦"
             isActive={activeMode === 'assist'}
+            isLocked={!user} // lock if user not registered
             onSelect={() => handleSelect('assist')}
           />
 
@@ -44,6 +53,7 @@ export const ModeSelector: React.FC = () => {
             tags={['Live Camera', 'GPS', 'Voice', 'SOS']}
             icon="◉"
             isActive={activeMode === 'nav'}
+            isLocked={!user}
             onSelect={() => handleSelect('nav')}
           />
 
@@ -54,10 +64,11 @@ export const ModeSelector: React.FC = () => {
             tags={['Interview', 'Presentation', 'Pitch', 'AI Insight']}
             icon="◈"
             isActive={activeMode === 'coach'}
+            isLocked={!user}
             onSelect={() => handleSelect('coach')}
           />
         </div>
       </div>
     </section>
   );
-};
+}
