@@ -2,6 +2,8 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/contexts/AuthContext';
 
 type UseCase = 'navigation' | 'coach' | 'both';
 
@@ -19,6 +21,8 @@ export default function RegisterPage() {
   // Step 2 fields
   const [fullName, setFullName] = useState('');
   const [useCase, setUseCase] = useState<UseCase | null>(null);
+  const router = useRouter();
+  const { signInWithGoogle } = useAuth();
 
   const passwordStrength = (() => {
     if (!password) return 0;
@@ -48,31 +52,43 @@ export default function RegisterPage() {
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!useCase) { setError('Please select a use case.'); return; }
-    setLoading(true);
-    setError('');
-    try {
-      // TODO: integrate with Firebase Auth / backend
-      await new Promise((r) => setTimeout(r, 1400));
-      console.log('Register:', { email, password, fullName, useCase });
-    } catch {
-      setError('Registration failed. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
+  e.preventDefault();
+  if (!useCase) {
+    setError('Please select a use case.');
+    return;
+  }
+
+  setLoading(true);
+  setError('');
+
+  try {
+    //  Replace this later with Firebase createUserWithEmailAndPassword
+    console.log('Register:', { email, password, fullName, useCase });
+
+    // ✅ redirect after success
+    router.push('/dashboard');
+  } catch {
+    setError('Registration failed. Please try again.');
+  } finally {
+    setLoading(false);
+  }
+};
 
   const handleGoogle = async () => {
-    setLoading(true);
-    try {
-      await new Promise((r) => setTimeout(r, 800));
-    } catch {
-      setError('Google sign-in failed.');
-    } finally {
-      setLoading(false);
-    }
-  };
+  setLoading(true);
+  setError('');
+
+  try {
+    await signInWithGoogle();
+
+    // ✅ redirect after Google auth
+    router.push('/dashboard');
+  } catch {
+    setError('Google sign-in failed.');
+  } finally {
+    setLoading(false);
+  }
+};
 
   return (
     <div className="auth-page">
