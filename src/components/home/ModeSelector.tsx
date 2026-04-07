@@ -5,7 +5,6 @@ import { ModeCard } from '@/components/home/ModeCard';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 
-
 interface ModeSelectorProps {
   user: null | any;
   router: ReturnType<typeof useRouter>;
@@ -15,7 +14,11 @@ export default function ModeSelector({ user, router }: ModeSelectorProps) {
   const [activeMode, setActiveMode] = useState<'nav' | 'coach' | 'assist' | null>(null);
 
   const handleSelect = (mode: 'nav' | 'coach' | 'assist') => {
-    if (!user) return; // prevent selection if not registered
+    if (!user) {
+      // Redirect to login/signup if user is not signed in
+      router.push('/login'); 
+      return;
+    }
 
     setActiveMode(mode);
     setTimeout(() => {
