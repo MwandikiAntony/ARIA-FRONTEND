@@ -29,8 +29,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [loading] = useState<boolean>(false);
 
   const signInWithGoogle = async (): Promise<void> => {
-    console.log('Google sign-in disabled - Firebase not configured');
-  };
+  try {
+    // integrate Firebase here later
+    console.log('Signing in with Google...');
+  } catch (err) {
+    console.error(err);
+    throw err; 
+  }
+};
 
   const logout = async (): Promise<void> => {
     console.log('Logout disabled - Firebase not configured');

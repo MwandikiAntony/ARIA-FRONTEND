@@ -32,16 +32,20 @@ export default function LoginPage() {
 };
 
   const handleGoogle = async () => {
-    setLoading(true);
-    try {
-      // TODO: signInWithGoogle()
-      await new Promise((r) => setTimeout(r, 800));
-    } catch {
-      setError('Google sign-in failed.');
-    } finally {
-      setLoading(false);
-    }
-  };
+  setLoading(true);
+  setError('');
+
+  try {
+    await signInWithGoogle();
+
+    // ✅ redirect
+    router.push('/dashboard');
+  } catch {
+    setError('Google sign-in failed.');
+  } finally {
+    setLoading(false);
+  }
+};
 
   return (
     <div className="auth-page">
