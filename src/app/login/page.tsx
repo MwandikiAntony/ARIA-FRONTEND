@@ -20,6 +20,7 @@ export default function LoginPage() {
 
   try {
     // 👉 Replace later with Firebase signInWithEmailAndPassword
+    // signInWithEmailAndPassword(auth, email, password)
     console.log('Login:', { email, password });
 
     // ✅ redirect
