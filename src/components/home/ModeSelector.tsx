@@ -2,14 +2,14 @@
 
 import React, { useState } from 'react';
 import { ModeCard } from '@/components/home/ModeCard';
-import { type User, useAuth } from '@/contexts/AuthContext'; 
+import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 
+
 interface ModeSelectorProps {
-  user: User | null;
+  user: null | any;
   router: ReturnType<typeof useRouter>;
 }
-
 
 export default function ModeSelector({ user, router }: ModeSelectorProps) {
   const [activeMode, setActiveMode] = useState<'nav' | 'coach' | 'assist' | null>(null);
@@ -42,7 +42,7 @@ export default function ModeSelector({ user, router }: ModeSelectorProps) {
             tags={['Live Camera', 'Voice', 'Any Task', 'Hands-Free']}
             icon="✦"
             isActive={activeMode === 'assist'}
-            isLocked={!user} // lock if user not registered
+            isLocked={!user}
             onSelect={() => handleSelect('assist')}
           />
 
